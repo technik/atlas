@@ -189,6 +189,31 @@ int main(int, const char**)
 	auto deltaV = earthMarsTransfer.deltaV(earthCircularOrbit.velocity(), marsCircularOrbit.velocity());
 	std::cout << "Required deltaV: " << deltaV << " m/s\n";
 
+	// Suboptimal interception transfer analysis
+	std::cout << "Computing Mars to Earth outbound tangent interception ellipses\n";
+	const auto marsMeanRadius = CircularOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
+	const auto earthMeanRadius = CircularOrbit::meanRadius(EarthPerihelion, EarthEccentricity);
+	const auto radRatio = marsMeanRadius / earthMeanRadius;
+	std::cout << "Mars/Earth radius ratio = " << radRatio << "\n";
+
+	const int halfSamples = 20;
+	const auto earthV = earthCircularOrbit.velocity();
+	const auto marsV = marsCircularOrbit.velocity();
+	for (int i = -halfSamples; i <= halfSamples; ++i)
+	{
+		const auto phi = M_PI_2 * i;
+		// Interception point
+		const auto yi = radRatio * sin(phi);
+		const auto xi = radRatio * cos(phi);
+
+		// Compute eccentricity of interception orbit
+		const auto e = (radRatio - 1) / (1 + xi);
+		// Orbital parameter
+		const auto p = (1 + e) * earthMeanRadius;
+		const auto h = sqrt(SolarGravitationalConstant * p);
+		const auto v0 = h / earthMeanRadius;
+		std::cout << "Phi: " << phi << ", deltaV: " << v0 - earthV << "\n";
+	}
 
 	return 0;
 }
