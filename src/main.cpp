@@ -62,6 +62,9 @@ double daysFromSeconds(double seconds)
 	return seconds / (24 * 3600);
 }
 
+class OrbitalParameters
+{};
+
 class CircularOrbit
 {
 public:
@@ -96,10 +99,10 @@ private:
 	double m_radius;
 };
 
-class HoffmanTransfer
+class HohmannTransfer
 {
 public:
-	HoffmanTransfer(double focalBodyGravitationalParam, double periapsis, double apoapsis)
+	HohmannTransfer(double focalBodyGravitationalParam, double periapsis, double apoapsis)
 		: m_periapsis(periapsis)
 		, m_apoapsis(apoapsis)
 		, m_mu(focalBodyGravitationalParam)
@@ -179,10 +182,10 @@ int main(int, const char**)
 	std::cout << "Mars´s mean distance from the sun:" << meanEarthRad << "m\n";
 	std::cout << "Earth´s average speed: " << earthCircularOrbit.velocity() << "m/s\n";
 
-	// Compute first approx Earth-mass Hoffmantransfer
-	HoffmanTransfer earthMarsTransfer(SolarGravitationalConstant, meanEarthRad, meanMarsRad);
-	std::cout << "Earth-mass Hoffman transfer eccentricity: " << earthMarsTransfer.eccentricity() << "\n";
-	std::cout << "Hoffman transfer time Earth to Mars: " << daysFromSeconds(earthMarsTransfer.transferTime()) << " days\n";
+	// Compute first approx Earth-mass Hohmann transfer
+	HohmannTransfer earthMarsTransfer(SolarGravitationalConstant, meanEarthRad, meanMarsRad);
+	std::cout << "Earth-mass Hohmann transfer eccentricity: " << earthMarsTransfer.eccentricity() << "\n";
+	std::cout << "Hohmann transfer time Earth to Mars: " << daysFromSeconds(earthMarsTransfer.transferTime()) << " days\n";
 	auto deltaV = earthMarsTransfer.deltaV(earthCircularOrbit.velocity(), marsCircularOrbit.velocity());
 	std::cout << "Required deltaV: " << deltaV << " m/s\n";
 
