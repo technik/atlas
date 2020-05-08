@@ -19,9 +19,10 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-#define _USE_MATH_DEFINES
+
 #include <cmath>
 #include <iostream>
+#include "ellipse.h"
 
 // Math constants
 constexpr double RadFromDeg(double deg)
@@ -64,6 +65,18 @@ double daysFromSeconds(double seconds)
 
 class OrbitalParameters
 {};
+
+class PlanarEllipticOrbit
+{
+public:
+	PlanarEllipticOrbit(double mu, const Ellipse& e, double periapsisArg);
+};
+
+class EllipticOrbit
+{
+public:
+	EllipticOrbit(double mu, const Ellipse&, double anomalyAtEpoch, double raan, double periapsisArg, double inclination);
+};
 
 class CircularOrbit
 {
@@ -170,8 +183,22 @@ private:
 	double m_p; // Orbital parameter
 };
 
+void starshipWorkhorse()
+{
+	auto leoRadius = 6730e3 + 500e3;
+	auto geoRadius = 35786e3;
+	CircularOrbit leo(leoRadius, EarthMass);
+	CircularOrbit geo(geoRadius, EarthMass);
+	HohmannTransfer leo2geo(EarthMass * G, leoRadius, geoRadius);
+	std::cout << "deltaV Leo 2 Geo: " << leo2geo.deltaV(leo.velocity(), geo.velocity());
+	HohmannTransfer geo2leo(EarthMass * G, geoRadius, leoRadius);
+	std::cout << "deltaV Geo 2 Leo: " << geo2leo.deltaV(geo.velocity(), leo.velocity());
+}
+
 int main(int, const char**)
 {
+	starshipWorkhorse();
+
 	double meanMarsRad = CircularOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
 	CircularOrbit marsCircularOrbit(meanMarsRad, SolarMass, MarsMass);
 	std::cout << "Mars´s mean distance from the sun:" << meanMarsRad << "m\n";
@@ -212,6 +239,8 @@ int main(int, const char**)
 		const auto p = (1 + e) * earthMeanRadius;
 		const auto h = sqrt(SolarGravitationalConstant * p);
 		const auto v0 = h / earthMeanRadius;
+
+		// Compute flight time using Lambert's theorem
 		std::cout << "Phi: " << phi << ", deltaV: " << v0 - earthV << "\n";
 	}
 
