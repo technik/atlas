@@ -231,12 +231,12 @@ int main(int, const char**)
 	// The minimun travel phase would be acos(marsMeanOrbitRadius/earthMeanOrbitRadius), but that would require infinite
 	// energy and a straight line trajectory.
 	// Instead, we can set an limit to injection DV, travel time or phase.
-	const int halfSamples = 20;
+	const int numSamples = 20;
 	const auto earthV = earthCircularOrbit.velocity();
 	const auto marsV = marsCircularOrbit.velocity();
-	for (int i = -halfSamples; i <= halfSamples; ++i)
+	for (int i = 0; i < numSamples; ++i)
 	{
-		const auto phi = M_PI_2 * i / halfSamples;
+		const auto phi = (0.5f*M_PI * i) / (numSamples-1) + M_PI/2;
 		// Interception point
 		const auto yi = radiiRatio * sin(phi);
 		const auto xi = radiiRatio * cos(phi);
