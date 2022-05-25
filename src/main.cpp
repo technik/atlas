@@ -22,7 +22,7 @@
 
 #include <cmath>
 #include <iostream>
-#include "ellipse.h"
+//#include "ellipse.h"
 
 // Math constants
 constexpr double RadFromDeg(double deg)
@@ -69,13 +69,13 @@ class OrbitalParameters
 class PlanarEllipticOrbit
 {
 public:
-	PlanarEllipticOrbit(double mu, const Ellipse& e, double periapsisArg);
+	//PlanarEllipticOrbit(double mu, const Ellipse& e, double periapsisArg);
 };
 
 class EllipticOrbit
 {
 public:
-	EllipticOrbit(double mu, const Ellipse&, double anomalyAtEpoch, double raan, double periapsisArg, double inclination);
+	//EllipticOrbit(double mu, const Ellipse&, double anomalyAtEpoch, double raan, double periapsisArg, double inclination);
 };
 
 class CircularOrbit
@@ -209,7 +209,7 @@ int main(int, const char**)
 	std::cout << "Mars´s mean distance from the sun:" << meanEarthRad << "m\n";
 	std::cout << "Earth´s average speed: " << earthCircularOrbit.velocity() << "m/s\n";
 
-	// Compute first approx Earth-mass Hohmann transfer
+	// Compute first approx Earth-Mars Hohmann transfer
 	HohmannTransfer earthMarsTransfer(SolarGravitationalConstant, meanEarthRad, meanMarsRad);
 	std::cout << "Earth-mass Hohmann transfer eccentricity: " << earthMarsTransfer.eccentricity() << "\n";
 	std::cout << "Hohmann transfer time Earth to Mars: " << daysFromSeconds(earthMarsTransfer.transferTime()) << " days\n";
@@ -220,21 +220,29 @@ int main(int, const char**)
 	std::cout << "Computing Mars to Earth outbound tangent interception ellipses\n";
 	const auto marsMeanRadius = CircularOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
 	const auto earthMeanRadius = CircularOrbit::meanRadius(EarthPerihelion, EarthEccentricity);
-	const auto radRatio = marsMeanRadius / earthMeanRadius;
-	std::cout << "Mars/Earth radius ratio = " << radRatio << "\n";
+	const auto radiiRatio = marsMeanRadius / earthMeanRadius;
+	std::cout << "Mars/Earth radius ratio = " << radiiRatio << "\n";
 
+	// Compute the delta-v requisites of orbits tangential to earth's orbits, that intersect mars's orbit.
+	// This only takes into account the earth orbit to transfer insertion delta-V, but not the transfer to mars orbit.
+	// Phi is the angle between earth on departure, and mars on arrival.
+	// Assuming circular orbits.
+	// The maximun travel phase is Pi, corresponding to a Hohmann transfer.
+	// The minimun travel phase would be acos(marsMeanOrbitRadius/earthMeanOrbitRadius), but that would require infinite
+	// energy and a straight line trajectory.
+	// Instead, we can set an limit to injection DV, travel time or phase.
 	const int halfSamples = 20;
 	const auto earthV = earthCircularOrbit.velocity();
 	const auto marsV = marsCircularOrbit.velocity();
 	for (int i = -halfSamples; i <= halfSamples; ++i)
 	{
-		const auto phi = M_PI_2 * i;
+		const auto phi = M_PI_2 * i / halfSamples;
 		// Interception point
-		const auto yi = radRatio * sin(phi);
-		const auto xi = radRatio * cos(phi);
+		const auto yi = radiiRatio * sin(phi);
+		const auto xi = radiiRatio * cos(phi);
 
 		// Compute eccentricity of interception orbit
-		const auto e = (radRatio - 1) / (1 + xi);
+		const auto e = (radiiRatio - 1) / (1 + xi);
 		// Orbital parameter
 		const auto p = (1 + e) * earthMeanRadius;
 		const auto h = sqrt(SolarGravitationalConstant * p);
