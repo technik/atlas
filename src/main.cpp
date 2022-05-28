@@ -22,6 +22,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <cassert>
 //#include "ellipse.h"
 
 // Math constants
@@ -63,29 +64,9 @@ double daysFromSeconds(double seconds)
 	return seconds / (24 * 3600);
 }
 
-class OrbitalParameters
-{};
-
-class PlanarEllipticOrbit
-{
-public:
-	//PlanarEllipticOrbit(double mu, const Ellipse& e, double periapsisArg);
-};
-
-class EllipticOrbit
-{
-public:
-	//EllipticOrbit(double mu, const Ellipse&, double anomalyAtEpoch, double raan, double periapsisArg, double inclination);
-};
-
 class CircularOrbit
 {
 public:
-	static double meanRadius(double perihelion, double eccentricity)
-	{
-		return perihelion * (1 + eccentricity);
-	}
-
 	CircularOrbit(double radius, double mainBodyMass, double orbiterMass = 0)
 		: m_radius(radius)
 	{
@@ -97,25 +78,30 @@ public:
 		return m_radius;
 	}
 
+	// Linear speed of the orbiting body
 	double velocity() const
 	{
 		return sqrt(m_mu / m_radius);
 	}
 
+	// Time to complete a full orbit
 	double period() const
 	{
 		return M_2_PI* m_radius* sqrt(m_radius / m_mu);
 	}
+
+	double gravitationalConstant() const { return m_mu; }
 
 private:
 	double m_mu; // Gravitational constant
 	double m_radius;
 };
 
-class HohmannTransfer
+class EllipticalOrbit
 {
 public:
-	HohmannTransfer(double focalBodyGravitationalParam, double periapsis, double apoapsis)
+	EllipticalOrbit() = default;
+	EllipticalOrbit(double focalBodyGravitationalParam, double periapsis, double apoapsis)
 		: m_periapsis(periapsis)
 		, m_apoapsis(apoapsis)
 		, m_mu(focalBodyGravitationalParam)
@@ -175,42 +161,41 @@ public:
 		return m_e;
 	}
 
+	static double meanRadius(double perihelion, double eccentricity)
+	{
+		return perihelion * (1 + eccentricity);
+	}
+
 private:
-	const double m_mu;
-	const double m_periapsis;
-	const double m_apoapsis;
-	double m_e; // Orbital eccentricity
-	double m_p; // Orbital parameter
+	const double m_mu = 1;
+	const double m_periapsis = 1;
+	const double m_apoapsis = 1;
+	double m_e = 1; // Orbital eccentricity
+	double m_p = 1; // Orbital parameter
 };
 
-void starshipWorkhorse()
+EllipticalOrbit HohmannTransfer(const CircularOrbit& startOrbit, const CircularOrbit& destOrbit)
 {
-	auto leoRadius = 6730e3 + 500e3;
-	auto geoRadius = 35786e3;
-	CircularOrbit leo(leoRadius, EarthMass);
-	CircularOrbit geo(geoRadius, EarthMass);
-	HohmannTransfer leo2geo(EarthMass * G, leoRadius, geoRadius);
-	std::cout << "deltaV Leo 2 Geo: " << leo2geo.deltaV(leo.velocity(), geo.velocity());
-	HohmannTransfer geo2leo(EarthMass * G, geoRadius, leoRadius);
-	std::cout << "deltaV Geo 2 Leo: " << geo2leo.deltaV(geo.velocity(), leo.velocity());
+	// Make sure the two orbits are compatible
+	assert(startOrbit.gravitationalConstant() == destOrbit.gravitationalConstant());
+	auto mu = startOrbit.gravitationalConstant();
+	return EllipticalOrbit(mu, startOrbit.radius(), destOrbit.radius());
 }
 
 int main(int, const char**)
 {
-	starshipWorkhorse();
-
-	double meanMarsRad = CircularOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
+	double meanMarsRad = EllipticalOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
 	CircularOrbit marsCircularOrbit(meanMarsRad, SolarMass, MarsMass);
 	std::cout << "Mars큦 mean distance from the sun:" << meanMarsRad << "m\n";
 	std::cout << "Mars큦 average speed: " << marsCircularOrbit.velocity() << "m/s\n";
 
-	double meanEarthRad = CircularOrbit::meanRadius(EarthPerihelion, EarthEccentricity);
+	double meanEarthRad = EllipticalOrbit::meanRadius(EarthPerihelion, EarthEccentricity);
 	CircularOrbit earthCircularOrbit(meanEarthRad, SolarMass, EarthMass);
 	std::cout << "Mars큦 mean distance from the sun:" << meanEarthRad << "m\n";
 	std::cout << "Earth큦 average speed: " << earthCircularOrbit.velocity() << "m/s\n";
 
 	// Compute first approx Earth-Mars Hohmann transfer
-	HohmannTransfer earthMarsTransfer(SolarGravitationalConstant, meanEarthRad, meanMarsRad);
+	EllipticalOrbit earthMarsTransfer(SolarGravitationalConstant, meanEarthRad, meanMarsRad);
 	std::cout << "Earth-mass Hohmann transfer eccentricity: " << earthMarsTransfer.eccentricity() << "\n";
 	std::cout << "Hohmann transfer time Earth to Mars: " << daysFromSeconds(earthMarsTransfer.transferTime()) << " days\n";
 	auto deltaV = earthMarsTransfer.deltaV(earthCircularOrbit.velocity(), marsCircularOrbit.velocity());
@@ -218,8 +203,8 @@ int main(int, const char**)
 
 	// Suboptimal interception transfer analysis
 	std::cout << "Computing Mars to Earth outbound tangent interception ellipses\n";
-	const auto marsMeanRadius = CircularOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
-	const auto earthMeanRadius = CircularOrbit::meanRadius(EarthPerihelion, EarthEccentricity);
+	const auto marsMeanRadius = EllipticalOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
+	const auto earthMeanRadius = EllipticalOrbit::meanRadius(EarthPerihelion, EarthEccentricity);
 	const auto radiiRatio = marsMeanRadius / earthMeanRadius;
 	std::cout << "Mars/Earth radius ratio = " << radiiRatio << "\n";
 
@@ -230,7 +215,7 @@ int main(int, const char**)
 	// The maximun travel phase is Pi, corresponding to a Hohmann transfer.
 	// The minimun travel phase would be acos(marsMeanOrbitRadius/earthMeanOrbitRadius), but that would require infinite
 	// energy and a straight line trajectory.
-	// Instead, we can set an limit to injection DV, travel time or phase.
+	// Instead, we can set a limit to injection DV, travel time or phase.
 	const int numSamples = 20;
 	const auto earthV = earthCircularOrbit.velocity();
 	const auto marsV = marsCircularOrbit.velocity();
