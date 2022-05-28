@@ -38,7 +38,7 @@ macro(compile_HLSL_flags _SOURCE SOURCE_LIST OUTPUT_LIST _PROFILE)
     LIST(APPEND ${SOURCE_LIST} ${_SOURCE})
     LIST(APPEND ${OUTPUT_LIST} ${OUTPUT})
 
-    set(_COMMAND dxc -E main -Fc ${ASM} -Zi -Fd ${FILE_NAME}.pdb -Fo ${OUTPUT} -I "../modelviewer/shaders/" -T ${_PROFILE} ${_SOURCE})
+    set(_COMMAND dxc -E main -Fc ${ASM} -Zi -Fd ${FILE_NAME}.pdb -Fo ${OUTPUT} -I "../src/shaders/" -T ${_PROFILE} ${_SOURCE})
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/bin/${OUTPUT}
         COMMAND echo ${_COMMAND}
@@ -65,10 +65,10 @@ macro(addComputeShader SRC SOURCE_LIST OUTPUT_LIST)
   compile_HLSL_flags(${SRC} -T cs_6_5 ${SOURCE_LIST} ${OUTPUT_LIST})
 endmacro()
 
-file(GLOB_RECURSE HLSL_HEADER_FILES "atlas/shaders/*.hlsl" "shaders/*.h")
-file(GLOB_RECURSE VERTEX_SOURCE_FILES "atlas/shaders/*.vshader")
-file(GLOB_RECURSE PIXEL_SOURCE_FILES "atlas/shaders/*.pshader")
-file(GLOB_RECURSE COMPUTE_SOURCE_FILES "atlas/shaders/*.cshader")
+file(GLOB_RECURSE HLSL_HEADER_FILES "src/shaders/*.hlsl" "shaders/*.h")
+file(GLOB_RECURSE VERTEX_SOURCE_FILES "src/shaders/*.vshader")
+file(GLOB_RECURSE PIXEL_SOURCE_FILES "src/shaders/*.pshader")
+file(GLOB_RECURSE COMPUTE_SOURCE_FILES "src/shaders/*.cshader")
 
 set(HLSL_SOURCES)
 set(HLSL_OUTPUT)

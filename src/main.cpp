@@ -1,6 +1,6 @@
 // MIT License
 // 
-// Copyright(c) 2020 Carmelo J. Fernández-Agüera
+// Copyright(c) 2020-2022 Carmelo J. Fernández-Agüera
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this softwareand associated documentation files(the "Software"), to deal
@@ -19,6 +19,27 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+#include <Windows.h>
+
+// Windows Runtime Library. Needed for Microsoft::WRL::ComPtr<> template class.
+#include <wrl.h>
+namespace WRL = Microsoft::WRL;
+
+// DirectX 12 specific headers.
+#include <d3d12.h>
+#include <dxgi1_6.h>
+#include <d3dcompiler.h>
+#include <DirectXMath.h>
+
+// D3D12 extension library.
+#include <d3dx12.h>
+
+// Viewer projects
+#include "BaseApp.h"
+#include "cmdLineParser.h"
+#include "gfx/dxHelpers.h"
+#include "gfx/renderer.h"
+#include "gfx/GPUAllocator.h"
 
 #include <cmath>
 #include <iostream>
@@ -185,7 +206,7 @@ EllipticalOrbit HohmannTransfer(const CircularOrbit& startOrbit, const CircularO
 	return EllipticalOrbit(mu, startOrbit.radius(), destOrbit.radius());
 }
 
-int main(int, const char**)
+int plotMission(int, const char**)
 {
 	double meanMarsRad = EllipticalOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
 	CircularOrbit marsCircularOrbit(meanMarsRad, SolarMass, MarsMass);
@@ -241,4 +262,129 @@ int main(int, const char**)
 	}
 
 	return 0;
+}
+
+BaseApp* gApp = nullptr;
+
+// Window callback function.
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+
+class ModelViewer : public BaseApp
+{
+public:
+    template<class T> using ComPtr = Microsoft::WRL::ComPtr<T>;
+
+    void parseCommandLineArguments(int argc, const char** argv)
+    {
+        CmdLineParser argParser;
+        argParser.addOption("w", &m_ClientWidth);
+        argParser.addOption("h", &m_ClientHeight);
+        argParser.addFlag("fullScreen", m_fullScreen);
+        argParser.parse(argc, argv);
+    }
+
+    bool init(int argc, const char** argv)
+    {
+        parseCommandLineArguments(argc, argv);
+
+        if (!__super::init())
+            return false;
+
+        m_renderer = std::make_unique<gfx::Renderer>(m_ClientWidth, m_ClientHeight);
+
+        return true;
+    }
+
+    void resize(uint32_t width, uint32_t height)
+    {
+        BaseApp::resize(width, height);
+        m_renderer->OnWindowResize(width, height);
+    }
+
+    bool update() override
+    {
+        if (!pollWindowMessages())
+            return false;
+
+        static uint64_t frameCount = 0;
+        static double totalTime = 0.0;
+
+        constexpr float dt = 1.f / 60;
+        totalTime += dt;
+        frameCount++;
+
+        if (totalTime > 1.0)
+        {
+            double fps = frameCount / totalTime;
+
+            char buffer[512];
+            sprintf_s(buffer, "FPS: %f\n", fps);
+            OutputDebugStringA(buffer);
+
+            frameCount = 0;
+            totalTime = 0.0;
+        }
+
+        return true;
+    }
+
+    void render()
+    {
+        auto backBuffer = swapChain()->backBuffer().Get();
+        auto colorRTV = swapChain()->backBufferView();
+
+        // Update the MVP matrix
+        m_renderer->Render(backBuffer,
+            colorRTV,
+            swapChain()->backBufferFence());
+
+        // Present
+        // The swap chain has internal access to the graphics queue, and will signal the queue right after presenting.
+        swapChain()->Present();
+    }
+
+private:
+    // Scene data
+	std::unique_ptr<gfx::Renderer> m_renderer;
+};
+
+LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    if (gApp)
+    {
+        if (!gApp->processWindowMessage(hwnd, message, wParam, lParam))
+        {
+            return ::DefWindowProc(hwnd, message, wParam, lParam);
+        }
+    }
+    else
+    {
+        return ::DefWindowProc(hwnd, message, wParam, lParam);
+    }
+
+    return 0;
+}
+
+int main(int argc, const char** argv)
+{
+    ModelViewer app;
+
+    if (!app.init(argc, argv))
+        return -1;
+
+    gApp = &app;
+
+    for (;;)
+    {
+        if (!app.update())
+        {
+            break;
+        }
+
+        app.render();
+    }
+
+    app.end();
+
+    return 0;
 }
