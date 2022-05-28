@@ -23,12 +23,15 @@
 #include <cmath>
 #include <iostream>
 #include <cassert>
-//#include "ellipse.h"
+#include <numbers>
 
 // Math constants
+static constexpr auto Pi = std::numbers::pi_v<double>;
+static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
+
 constexpr double RadFromDeg(double deg)
 {
-	return deg * (M_PI / 180);
+	return deg * (Pi / 180);
 }
 
 // Physical constants
@@ -87,7 +90,7 @@ public:
 	// Time to complete a full orbit
 	double period() const
 	{
-		return M_2_PI* m_radius* sqrt(m_radius / m_mu);
+		return TwoPi * m_radius* sqrt(m_radius / m_mu);
 	}
 
 	double gravitationalConstant() const { return m_mu; }
@@ -147,13 +150,13 @@ public:
 	double period() const
 	{
 		const auto a = semiMajorAxis();
-		return M_2_PI * a * sqrt(a / m_mu);
+		return TwoPi * a * sqrt(a / m_mu);
 	}
 
 	double transferTime() const
 	{
 		const auto a = semiMajorAxis();
-		return M_PI * a * sqrt(a / m_mu);
+		return Pi * a * sqrt(a / m_mu);
 	}
 
 	double eccentricity() const
@@ -221,7 +224,7 @@ int main(int, const char**)
 	const auto marsV = marsCircularOrbit.velocity();
 	for (int i = 0; i < numSamples; ++i)
 	{
-		const auto phi = (0.5f*M_PI * i) / (numSamples-1) + M_PI/2;
+		const auto phi = (0.5f*Pi * i) / (numSamples-1) + Pi/2;
 		// Interception point
 		const auto yi = radiiRatio * sin(phi);
 		const auto xi = radiiRatio * cos(phi);
