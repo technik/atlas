@@ -16,6 +16,8 @@ inline constexpr double RadFromDeg(double deg)
 static constexpr double G = 6.67259e-11;
 
 // Solar system constants
+static constexpr double SolarRadius = 696e6;
+
 // Celestial body masses
 static constexpr double SolarMass = 1.9884e30;
 static constexpr double EarthMass = 5.9722e24;
@@ -48,6 +50,7 @@ inline double daysFromSeconds(double seconds)
 class CircularOrbit
 {
 public:
+	CircularOrbit() = default;
 	CircularOrbit(double radius, double mainBodyMass, double orbiterMass = 0)
 		: m_radius(radius)
 	{
@@ -93,18 +96,27 @@ private:
 	double m_radius;
 };
 
+// For now, it assumes all orbits lay within the ecliptic plane
 class EllipticalOrbit
 {
 public:
 	EllipticalOrbit() = default;
-	EllipticalOrbit(double focalBodyGravitationalParam, double periapsis, double apoapsis)
+	EllipticalOrbit(
+		double focalBodyGravitationalParam,
+		double periapsis,
+		double apoapsis,
+		double argumentOfPeriapsis = 0)
 		: m_periapsis(periapsis)
 		, m_apoapsis(apoapsis)
 		, m_mu(focalBodyGravitationalParam)
+		, m_argumentOfPeriapsis(argumentOfPeriapsis)
 	{
 		m_e = (m_apoapsis - m_periapsis) / (m_apoapsis + m_periapsis);
 		m_p = m_periapsis * (1 + m_e);
 	}
+
+	EllipticalOrbit(const EllipticalOrbit&) = default;
+	EllipticalOrbit& operator=(const EllipticalOrbit&) = default;
 
 	double radius(double theta) const
 	{
@@ -163,7 +175,7 @@ public:
 	}
 
 	// Expects numSegments+1 capacity in the x and y arrays
-	void plot(float* x, float* y, int numSegments, float tmax = 1)
+	void plot(float* x, float* y, int numSegments, float tmin = 0, float tmax = 1)
 	{
 		for (int i = 0; i < numSegments+1; ++i)
 		{
@@ -178,6 +190,7 @@ private:
 	const double m_mu = 1;
 	const double m_periapsis = 1;
 	const double m_apoapsis = 1;
+	const double m_argumentOfPeriapsis = 0;
 	double m_e = 1; // Orbital eccentricity
 	double m_p = 1; // Orbital parameter
 };
