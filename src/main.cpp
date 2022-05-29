@@ -46,6 +46,12 @@ namespace WRL = Microsoft::WRL;
 #include <cassert>
 #include <numbers>
 
+#include <imgui.h>
+#include "backends/imgui_impl_win32.h"
+#include "backends/imgui_impl_dx12.h"
+
+static ID3D12DescriptorHeap* g_pd3dSrvDescHeap = NULL;
+
 // Math constants
 static constexpr auto Pi = std::numbers::pi_v<double>;
 static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
@@ -292,6 +298,30 @@ public:
 
         m_renderer = std::make_unique<gfx::Renderer>(m_ClientWidth, m_ClientHeight);
 
+		// Init Imgui
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+
+		m_imguiIO = &ImGui::GetIO();
+
+		// Setup Platform/Renderer backends
+		ImGui_ImplWin32_Init(window()->m_hWnd);
+		auto ctxt = gfx::RenderContext();
+
+		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+		desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		desc.NumDescriptors = 1;
+		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		if (ctxt->m_dx12Device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&g_pd3dSrvDescHeap)) != S_OK)
+			return false;
+
+		constexpr int NUM_FRAMES_IN_FLIGHT = 2;
+		ImGui_ImplDX12_Init(ctxt->m_dx12Device.Get(), NUM_FRAMES_IN_FLIGHT,
+			DXGI_FORMAT_R8G8B8A8_UNORM,
+			g_pd3dSrvDescHeap,
+			g_pd3dSrvDescHeap->GetCPUDescriptorHandleForHeapStart(),
+			g_pd3dSrvDescHeap->GetGPUDescriptorHandleForHeapStart());
+
         return true;
     }
 
@@ -312,6 +342,10 @@ public:
         constexpr float dt = 1.f / 60;
         totalTime += dt;
         frameCount++;
+
+		ImGui_ImplDX12_NewFrame();
+		ImGui_ImplWin32_NewFrame();
+		ImGui::NewFrame();
 
         if (totalTime > 1.0)
         {
@@ -334,9 +368,19 @@ public:
         auto colorRTV = swapChain()->backBufferView();
 
         // Update the MVP matrix
-        m_renderer->Render(backBuffer,
+        m_renderer->BeginRender(backBuffer,
             colorRTV,
             swapChain()->backBufferFence());
+
+
+		// Present
+		// Create a window called "My First Tool", with a menu bar.
+		ImGui::Begin("My First Tool");
+		ImGui::End();
+
+
+		ImGui::Render();
+		m_renderer->EndRender(backBuffer);
 
         // Present
         // The swap chain has internal access to the graphics queue, and will signal the queue right after presenting.
@@ -346,6 +390,8 @@ public:
 private:
     // Scene data
 	std::unique_ptr<gfx::Renderer> m_renderer;
+
+	ImGuiIO* m_imguiIO = {};
 };
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)

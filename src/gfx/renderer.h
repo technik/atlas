@@ -15,10 +15,13 @@ namespace gfx {
     {
     public:
         Renderer(uint32_t rtWidth, uint32_t rtHeight);
-        void Render(
+        void BeginRender(
             ID3D12Resource* backBuffer,
             CD3DX12_CPU_DESCRIPTOR_HANDLE colorRTV,
             gfx::AwaitableFence backBufferFence);
+
+        void EndRender(ID3D12Resource* backBuffer);
+
         void OnWindowResize(uint32_t width, uint32_t height);
 
     private:

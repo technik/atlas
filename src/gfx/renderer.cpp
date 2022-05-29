@@ -17,7 +17,7 @@ namespace gfx
         InitRenderPipelines();
     }
 
-    void Renderer::Render(
+    void Renderer::BeginRender(
         ID3D12Resource* backBuffer,
         CD3DX12_CPU_DESCRIPTOR_HANDLE colorRTV,
         gfx::AwaitableFence backBufferFence)
@@ -45,21 +45,26 @@ namespace gfx
         dx12Cmd->RSSetScissorRects(1, &m_scissor);
         dx12Cmd->OMSetRenderTargets(1, &colorRTV, FALSE, &dsv);
 
-        // Common frame constants
-        //auto colMajorViewProj = transpose(viewProj);
-        //dx12Cmd->SetGraphicsRoot32BitConstants(1, sizeof(DirectX::XMMATRIX) / 4, &colMajorViewProj, 0);
-
-        // Draw geometry
-        //scene.Draw(*cmd);
-
-        // Transition the back buffer to Present state
-        cmd->ResourceBarrier(backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-
         // Finish recording
         ThrowIfFailed(dx12Cmd->Close());
 
         // Wait for the frame buffer to be available for rendering before submitting the command list
         gfxQueue.spinOnFence(backBufferFence);
+        gfxQueue.submitCommandList(cmd);
+    }
+
+    void Renderer::EndRender(ID3D12Resource* backBuffer)
+    {
+        // Get a command list for the frame
+        auto& gfxQueue = gfx::RenderContext()->graphicsQueue();
+        auto cmd = gfxQueue.getNewCommandList();
+
+        // Transition the back buffer to Present state
+        cmd->ResourceBarrier(backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+
+        // Finish recording
+        auto dx12Cmd = cmd->m_dx12CommandList;
+        ThrowIfFailed(dx12Cmd->Close());
         gfxQueue.submitCommandList(cmd);
     }
 

@@ -22,8 +22,6 @@ ${PROJECT_SOURCE_DIR}/${curdir}/*)
             GroupSources(${curdir}/${child})
         else()
             string(REPLACE "/" "\\" groupname ${curdir})
-        # I would like to call the src root folder in a different name, only in visual studio (not mandatory requirement)
-            string(REPLACE "src" "Common" groupname ${groupname})
             source_group(${groupname} FILES ${PROJECT_SOURCE_DIR}/${curdir}/${child})
           endif()
    endforeach()
@@ -87,12 +85,13 @@ endforeach()
 
 # Main target
 file(GLOB_RECURSE VIEWER_SRC "src/*.cpp" "src/*.h")
-GroupSources(atlas)
+GroupSources(src)
 add_executable(atlas ${VIEWER_SRC} ${HLSL_SOURCES})
 target_include_directories(atlas PUBLIC
     include
     include/dx12headers
     include/json/include
     ${D3D12_INCLUDE_DIRS}
+    src/imgui
     src)
 target_link_libraries(atlas ${D3D12_LIBRARIES})
