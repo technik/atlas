@@ -343,10 +343,6 @@ public:
         totalTime += dt;
         frameCount++;
 
-		ImGui_ImplDX12_NewFrame();
-		ImGui_ImplWin32_NewFrame();
-		ImGui::NewFrame();
-
         if (totalTime > 1.0)
         {
             double fps = frameCount / totalTime;
@@ -373,13 +369,29 @@ public:
             swapChain()->backBufferFence());
 
 
+		ImGui_ImplDX12_NewFrame();
+		ImGui_ImplWin32_NewFrame();
+		ImGui::NewFrame();
+
 		// Present
+		bool show = true;
+		ImGui::ShowDemoWindow(&show);
 		// Create a window called "My First Tool", with a menu bar.
 		ImGui::Begin("My First Tool");
 		ImGui::End();
 
 
 		ImGui::Render();
+
+		// Actual Imgui render
+		auto& gfxQueue = gfx::RenderContext()->graphicsQueue();
+		auto cmd = gfxQueue.getNewCommandList();
+		auto dx12Cmd = cmd->m_dx12CommandList;
+		cmd->m_dx12CommandList->SetDescriptorHeaps(1, &g_pd3dSrvDescHeap);
+		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), dx12Cmd.Get());
+		dx12Cmd->Close();
+		gfxQueue.submitCommandList(cmd);
+
 		m_renderer->EndRender(backBuffer);
 
         // Present
