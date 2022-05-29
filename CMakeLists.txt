@@ -93,5 +93,6 @@ target_include_directories(atlas PUBLIC
     include/json/include
     ${D3D12_INCLUDE_DIRS}
     src/imgui
+    src/implot
     src)
 target_link_libraries(atlas ${D3D12_LIBRARIES})

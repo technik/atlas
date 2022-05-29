@@ -1,448 +1,435 @@
-// MIT License
-// 
-// Copyright(c) 2020-2022 Carmelo J. Fernández-Agüera
-// 
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this softwareand associated documentation files(the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and /or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions :
-// 
-// The above copyright noticeand this permission notice shall be included in all
-// copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-#include <Windows.h>
+// Dear ImGui: standalone example application for DirectX 12
+// If you are new to Dear ImGui, read documentation from the docs/ folder + read the top of imgui.cpp.
+// Read online: https://github.com/ocornut/imgui/tree/master/docs
 
-// Windows Runtime Library. Needed for Microsoft::WRL::ComPtr<> template class.
-#include <wrl.h>
-namespace WRL = Microsoft::WRL;
+// Important: to compile on 32-bit systems, the DirectX12 backend requires code to be compiled with '#define ImTextureID ImU64'.
+// This is because we need ImTextureID to carry a 64-bit value and by default ImTextureID is defined as void*.
+// This define is set in the example .vcxproj file and need to be replicated in your app or by adding it to your imconfig.h file.
 
-// DirectX 12 specific headers.
-#include <d3d12.h>
-#include <dxgi1_6.h>
-#include <d3dcompiler.h>
-#include <DirectXMath.h>
-
-// D3D12 extension library.
-#include <d3dx12.h>
-
-// Viewer projects
-#include "BaseApp.h"
-#include "cmdLineParser.h"
-#include "gfx/dxHelpers.h"
-#include "gfx/renderer.h"
-#include "gfx/GPUAllocator.h"
-
-#include <cmath>
-#include <iostream>
-#include <cassert>
-#include <numbers>
-
-#include <imgui.h>
+#include "imgui.h"
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx12.h"
+#include "implot.h"
+#include <d3d12.h>
+#include <dxgi1_4.h>
+#include <tchar.h>
+#include <cmath>
 
+#include "orbits.h"
+
+#ifdef _DEBUG
+#define DX12_ENABLE_DEBUG_LAYER
+#endif
+
+#ifdef DX12_ENABLE_DEBUG_LAYER
+#include <dxgidebug.h>
+#pragma comment(lib, "dxguid.lib")
+#endif
+
+struct FrameContext
+{
+    ID3D12CommandAllocator* CommandAllocator;
+    UINT64                  FenceValue;
+};
+
+// Data
+static int const                    NUM_FRAMES_IN_FLIGHT = 3;
+static FrameContext                 g_frameContext[NUM_FRAMES_IN_FLIGHT] = {};
+static UINT                         g_frameIndex = 0;
+
+static int const                    NUM_BACK_BUFFERS = 3;
+static ID3D12Device* g_pd3dDevice = NULL;
+static ID3D12DescriptorHeap* g_pd3dRtvDescHeap = NULL;
 static ID3D12DescriptorHeap* g_pd3dSrvDescHeap = NULL;
+static ID3D12CommandQueue* g_pd3dCommandQueue = NULL;
+static ID3D12GraphicsCommandList* g_pd3dCommandList = NULL;
+static ID3D12Fence* g_fence = NULL;
+static HANDLE                       g_fenceEvent = NULL;
+static UINT64                       g_fenceLastSignaledValue = 0;
+static IDXGISwapChain3* g_pSwapChain = NULL;
+static HANDLE                       g_hSwapChainWaitableObject = NULL;
+static ID3D12Resource* g_mainRenderTargetResource[NUM_BACK_BUFFERS] = {};
+static D3D12_CPU_DESCRIPTOR_HANDLE  g_mainRenderTargetDescriptor[NUM_BACK_BUFFERS] = {};
 
-// Math constants
-static constexpr auto Pi = std::numbers::pi_v<double>;
-static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
+// Forward declarations of helper functions
+bool CreateDeviceD3D(HWND hWnd);
+void CleanupDeviceD3D();
+void CreateRenderTarget();
+void CleanupRenderTarget();
+void WaitForLastSubmittedFrame();
+FrameContext* WaitForNextFrameResources();
+LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-constexpr double RadFromDeg(double deg)
+// Main code
+int main(int, char**)
 {
-	return deg * (Pi / 180);
-}
+    // Create application window
+    ImGui_ImplWin32_EnableDpiAwareness();
+    WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("ImGui Example"), NULL };
+    ::RegisterClassEx(&wc);
+    HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("Dear ImGui DirectX12 Example"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
 
-// Physical constants
-double G = 6.67259e-11;
-
-// Solar system constants
-// Celestial body masses
-double SolarMass = 1.9884e30;
-double EarthMass = 5.9722e24;
-double MarsMass = 6.4171e23;
-double MoonMass = 7.34767309e22;
-double SolarGravitationalConstant = 1.32712440018e20;
-
-// Mean distances from the sun
-
-// Other orbital parameters
-double EarthAphelion = 1.521e11;
-double EarthPerihelion = 1.47095e11;
-double EarthSemimajorAxis = 1.49598023e11;
-double EarthEccentricity = 0.0167086;
-double EarthMeanAnomaly = RadFromDeg(358.617);
-double EarthPeriHelArg = RadFromDeg(114.207);
-
-double MarsAphelion = 2.492e11;
-double MarsPerihelion = 2.067e11;
-double MarsSemimajorAxis = 2.279392e11;
-double MarsEccentricity = 0.0934;
-double MarsLongAscNode = RadFromDeg(49.558);
-double MarsPeriHelArg = RadFromDeg(286.502);
-
-double daysFromSeconds(double seconds)
-{
-	return seconds / (24 * 3600);
-}
-
-class CircularOrbit
-{
-public:
-	CircularOrbit(double radius, double mainBodyMass, double orbiterMass = 0)
-		: m_radius(radius)
-	{
-		m_mu = G * (mainBodyMass + orbiterMass);
-	}
-
-	double radius() const
-	{
-		return m_radius;
-	}
-
-	// Linear speed of the orbiting body
-	double velocity() const
-	{
-		return sqrt(m_mu / m_radius);
-	}
-
-	// Time to complete a full orbit
-	double period() const
-	{
-		return TwoPi * m_radius* sqrt(m_radius / m_mu);
-	}
-
-	double gravitationalConstant() const { return m_mu; }
-
-private:
-	double m_mu; // Gravitational constant
-	double m_radius;
-};
-
-class EllipticalOrbit
-{
-public:
-	EllipticalOrbit() = default;
-	EllipticalOrbit(double focalBodyGravitationalParam, double periapsis, double apoapsis)
-		: m_periapsis(periapsis)
-		, m_apoapsis(apoapsis)
-		, m_mu(focalBodyGravitationalParam)
-	{
-		m_e = (m_apoapsis - m_periapsis) / (m_apoapsis + m_periapsis);
-		m_p = m_periapsis * (1 + m_e);
-	}
-
-	double radius(double theta) const
-	{
-		return m_p / (1 + m_e * cos(theta));
-	}
-
-	double velocity(double theta) const
-	{
-		const auto a = semiMajorAxis();
-		const auto r = radius(theta);
-		return sqrt(2 * m_mu / r - m_mu / a);
-	}
-
-	double perihelionVelocity() const
-	{
-		return sqrt(2 * m_mu * (1 / m_periapsis - 1 / (m_periapsis + m_apoapsis)));
-	}
-
-	double aphelionVelocity() const
-	{
-		return sqrt(2 * m_mu * (1 / m_apoapsis - 1 / (m_periapsis + m_apoapsis)));
-	}
-
-	double deltaV(double v0, double v1) const
-	{
-		const auto deltaVStart = abs(v0 - perihelionVelocity());
-		const auto deltaVEnd = abs(v1 - aphelionVelocity());
-		return deltaVStart + deltaVEnd;
-	}
-
-	double semiMajorAxis() const
-	{
-		return 0.5 * (m_apoapsis + m_periapsis);
-	}
-
-	double period() const
-	{
-		const auto a = semiMajorAxis();
-		return TwoPi * a * sqrt(a / m_mu);
-	}
-
-	double transferTime() const
-	{
-		const auto a = semiMajorAxis();
-		return Pi * a * sqrt(a / m_mu);
-	}
-
-	double eccentricity() const
-	{
-		return m_e;
-	}
-
-	static double meanRadius(double perihelion, double eccentricity)
-	{
-		return perihelion * (1 + eccentricity);
-	}
-
-private:
-	const double m_mu = 1;
-	const double m_periapsis = 1;
-	const double m_apoapsis = 1;
-	double m_e = 1; // Orbital eccentricity
-	double m_p = 1; // Orbital parameter
-};
-
-EllipticalOrbit HohmannTransfer(const CircularOrbit& startOrbit, const CircularOrbit& destOrbit)
-{
-	// Make sure the two orbits are compatible
-	assert(startOrbit.gravitationalConstant() == destOrbit.gravitationalConstant());
-	auto mu = startOrbit.gravitationalConstant();
-	return EllipticalOrbit(mu, startOrbit.radius(), destOrbit.radius());
-}
-
-int plotMission(int, const char**)
-{
-	double meanMarsRad = EllipticalOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
-	CircularOrbit marsCircularOrbit(meanMarsRad, SolarMass, MarsMass);
-	std::cout << "Mars´s mean distance from the sun:" << meanMarsRad << "m\n";
-	std::cout << "Mars´s average speed: " << marsCircularOrbit.velocity() << "m/s\n";
-
-	double meanEarthRad = EllipticalOrbit::meanRadius(EarthPerihelion, EarthEccentricity);
-	CircularOrbit earthCircularOrbit(meanEarthRad, SolarMass, EarthMass);
-	std::cout << "Mars´s mean distance from the sun:" << meanEarthRad << "m\n";
-	std::cout << "Earth´s average speed: " << earthCircularOrbit.velocity() << "m/s\n";
-
-	// Compute first approx Earth-Mars Hohmann transfer
-	EllipticalOrbit earthMarsTransfer(SolarGravitationalConstant, meanEarthRad, meanMarsRad);
-	std::cout << "Earth-mass Hohmann transfer eccentricity: " << earthMarsTransfer.eccentricity() << "\n";
-	std::cout << "Hohmann transfer time Earth to Mars: " << daysFromSeconds(earthMarsTransfer.transferTime()) << " days\n";
-	auto deltaV = earthMarsTransfer.deltaV(earthCircularOrbit.velocity(), marsCircularOrbit.velocity());
-	std::cout << "Required deltaV: " << deltaV << " m/s\n";
-
-	// Suboptimal interception transfer analysis
-	std::cout << "Computing Mars to Earth outbound tangent interception ellipses\n";
-	const auto marsMeanRadius = EllipticalOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
-	const auto earthMeanRadius = EllipticalOrbit::meanRadius(EarthPerihelion, EarthEccentricity);
-	const auto radiiRatio = marsMeanRadius / earthMeanRadius;
-	std::cout << "Mars/Earth radius ratio = " << radiiRatio << "\n";
-
-	// Compute the delta-v requisites of orbits tangential to earth's orbits, that intersect mars's orbit.
-	// This only takes into account the earth orbit to transfer insertion delta-V, but not the transfer to mars orbit.
-	// Phi is the angle between earth on departure, and mars on arrival.
-	// Assuming circular orbits.
-	// The maximun travel phase is Pi, corresponding to a Hohmann transfer.
-	// The minimun travel phase would be acos(marsMeanOrbitRadius/earthMeanOrbitRadius), but that would require infinite
-	// energy and a straight line trajectory.
-	// Instead, we can set a limit to injection DV, travel time or phase.
-	const int numSamples = 20;
-	const auto earthV = earthCircularOrbit.velocity();
-	const auto marsV = marsCircularOrbit.velocity();
-	for (int i = 0; i < numSamples; ++i)
-	{
-		const auto phi = (0.5f*Pi * i) / (numSamples-1) + Pi/2;
-		// Interception point
-		const auto yi = radiiRatio * sin(phi);
-		const auto xi = radiiRatio * cos(phi);
-
-		// Compute eccentricity of interception orbit
-		const auto e = (radiiRatio - 1) / (1 + xi);
-		// Orbital parameter
-		const auto p = (1 + e) * earthMeanRadius;
-		const auto h = sqrt(SolarGravitationalConstant * p);
-		const auto v0 = h / earthMeanRadius;
-
-		// Compute flight time using Lambert's theorem
-		std::cout << "Phi: " << phi << ", deltaV: " << v0 - earthV << "\n";
-	}
-
-	return 0;
-}
-
-BaseApp* gApp = nullptr;
-
-// Window callback function.
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-
-class ModelViewer : public BaseApp
-{
-public:
-    template<class T> using ComPtr = Microsoft::WRL::ComPtr<T>;
-
-    void parseCommandLineArguments(int argc, const char** argv)
+    // Initialize Direct3D
+    if (!CreateDeviceD3D(hwnd))
     {
-        CmdLineParser argParser;
-        argParser.addOption("w", &m_ClientWidth);
-        argParser.addOption("h", &m_ClientHeight);
-        argParser.addFlag("fullScreen", m_fullScreen);
-        argParser.parse(argc, argv);
+        CleanupDeviceD3D();
+        ::UnregisterClass(wc.lpszClassName, wc.hInstance);
+        return 1;
     }
 
-    bool init(int argc, const char** argv)
+    // Show the window
+    ::ShowWindow(hwnd, SW_SHOWDEFAULT);
+    ::UpdateWindow(hwnd);
+
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImPlot::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+
+    // Setup Dear ImGui style
+    //ImGui::StyleColorsDark();
+    ImGui::StyleColorsClassic();
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplWin32_Init(hwnd);
+    ImGui_ImplDX12_Init(g_pd3dDevice, NUM_FRAMES_IN_FLIGHT,
+        DXGI_FORMAT_R8G8B8A8_UNORM, g_pd3dSrvDescHeap,
+        g_pd3dSrvDescHeap->GetCPUDescriptorHandleForHeapStart(),
+        g_pd3dSrvDescHeap->GetGPUDescriptorHandleForHeapStart());
+
+    // Our state
+    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+
+    // Main loop
+    bool done = false;
+    while (!done)
     {
-        parseCommandLineArguments(argc, argv);
-
-        if (!__super::init())
-            return false;
-
-        m_renderer = std::make_unique<gfx::Renderer>(m_ClientWidth, m_ClientHeight);
-
-		// Init Imgui
-		IMGUI_CHECKVERSION();
-		ImGui::CreateContext();
-
-		m_imguiIO = &ImGui::GetIO();
-
-		// Setup Platform/Renderer backends
-		ImGui_ImplWin32_Init(window()->m_hWnd);
-		auto ctxt = gfx::RenderContext();
-
-		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
-		desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		desc.NumDescriptors = 1;
-		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		if (ctxt->m_dx12Device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&g_pd3dSrvDescHeap)) != S_OK)
-			return false;
-
-		constexpr int NUM_FRAMES_IN_FLIGHT = 2;
-		ImGui_ImplDX12_Init(ctxt->m_dx12Device.Get(), NUM_FRAMES_IN_FLIGHT,
-			DXGI_FORMAT_R8G8B8A8_UNORM,
-			g_pd3dSrvDescHeap,
-			g_pd3dSrvDescHeap->GetCPUDescriptorHandleForHeapStart(),
-			g_pd3dSrvDescHeap->GetGPUDescriptorHandleForHeapStart());
-
-        return true;
-    }
-
-    void resize(uint32_t width, uint32_t height)
-    {
-        BaseApp::resize(width, height);
-        m_renderer->OnWindowResize(width, height);
-    }
-
-    bool update() override
-    {
-        if (!pollWindowMessages())
-            return false;
-
-        static uint64_t frameCount = 0;
-        static double totalTime = 0.0;
-
-        constexpr float dt = 1.f / 60;
-        totalTime += dt;
-        frameCount++;
-
-        if (totalTime > 1.0)
+        // Poll and handle messages (inputs, window resize, etc.)
+        // See the WndProc() function below for our to dispatch events to the Win32 backend.
+        MSG msg;
+        while (::PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE))
         {
-            double fps = frameCount / totalTime;
-
-            char buffer[512];
-            sprintf_s(buffer, "FPS: %f\n", fps);
-            OutputDebugStringA(buffer);
-
-            frameCount = 0;
-            totalTime = 0.0;
+            ::TranslateMessage(&msg);
+            ::DispatchMessage(&msg);
+            if (msg.message == WM_QUIT)
+                done = true;
         }
-
-        return true;
-    }
-
-    void render()
-    {
-        auto backBuffer = swapChain()->backBuffer().Get();
-        auto colorRTV = swapChain()->backBufferView();
-
-        // Update the MVP matrix
-        m_renderer->BeginRender(backBuffer,
-            colorRTV,
-            swapChain()->backBufferFence());
-
-
-		ImGui_ImplDX12_NewFrame();
-		ImGui_ImplWin32_NewFrame();
-		ImGui::NewFrame();
-
-		// Present
-		bool show = true;
-		ImGui::ShowDemoWindow(&show);
-		// Create a window called "My First Tool", with a menu bar.
-		ImGui::Begin("My First Tool");
-		ImGui::End();
-
-
-		ImGui::Render();
-
-		// Actual Imgui render
-		auto& gfxQueue = gfx::RenderContext()->graphicsQueue();
-		auto cmd = gfxQueue.getNewCommandList();
-		auto dx12Cmd = cmd->m_dx12CommandList;
-		cmd->m_dx12CommandList->SetDescriptorHeaps(1, &g_pd3dSrvDescHeap);
-		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), dx12Cmd.Get());
-		dx12Cmd->Close();
-		gfxQueue.submitCommandList(cmd);
-
-		m_renderer->EndRender(backBuffer);
-
-        // Present
-        // The swap chain has internal access to the graphics queue, and will signal the queue right after presenting.
-        swapChain()->Present();
-    }
-
-private:
-    // Scene data
-	std::unique_ptr<gfx::Renderer> m_renderer;
-
-	ImGuiIO* m_imguiIO = {};
-};
-
-LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-    if (gApp)
-    {
-        if (!gApp->processWindowMessage(hwnd, message, wParam, lParam))
-        {
-            return ::DefWindowProc(hwnd, message, wParam, lParam);
-        }
-    }
-    else
-    {
-        return ::DefWindowProc(hwnd, message, wParam, lParam);
-    }
-
-    return 0;
-}
-
-int main(int argc, const char** argv)
-{
-    ModelViewer app;
-
-    if (!app.init(argc, argv))
-        return -1;
-
-    gApp = &app;
-
-    for (;;)
-    {
-        if (!app.update())
-        {
+        if (done)
             break;
+
+        // Start the Dear ImGui frame
+        ImGui_ImplDX12_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
+
+        float x_data[1000] = {};
+        float y_data[1000] = {};
+
+        for (int i = 0; i < 1000; ++i)
+        {
+            x_data[i] = std::cos(RadFromDeg(i*0.1));
+            y_data[i] = std::sin(RadFromDeg(i*0.1));
         }
 
-        app.render();
+        {
+            ImGui::Begin("Another Window");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+            ImGui::Text("Hello from another window!");
+            if (ImPlot::BeginPlot("My Plot")) {
+                ImPlot::PlotLine("My Line Plot", x_data, y_data, 1000);
+                ImPlot::EndPlot();
+            }
+            ImGui::End();
+        }
+
+        // Rendering
+        ImGui::Render();
+
+        FrameContext* frameCtx = WaitForNextFrameResources();
+        UINT backBufferIdx = g_pSwapChain->GetCurrentBackBufferIndex();
+        frameCtx->CommandAllocator->Reset();
+
+        D3D12_RESOURCE_BARRIER barrier = {};
+        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        barrier.Transition.pResource = g_mainRenderTargetResource[backBufferIdx];
+        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        g_pd3dCommandList->Reset(frameCtx->CommandAllocator, NULL);
+        g_pd3dCommandList->ResourceBarrier(1, &barrier);
+
+        // Render Dear ImGui graphics
+        const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
+        g_pd3dCommandList->ClearRenderTargetView(g_mainRenderTargetDescriptor[backBufferIdx], clear_color_with_alpha, 0, NULL);
+        g_pd3dCommandList->OMSetRenderTargets(1, &g_mainRenderTargetDescriptor[backBufferIdx], FALSE, NULL);
+        g_pd3dCommandList->SetDescriptorHeaps(1, &g_pd3dSrvDescHeap);
+        ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), g_pd3dCommandList);
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+        g_pd3dCommandList->ResourceBarrier(1, &barrier);
+        g_pd3dCommandList->Close();
+
+        g_pd3dCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&g_pd3dCommandList);
+
+        g_pSwapChain->Present(1, 0); // Present with vsync
+        //g_pSwapChain->Present(0, 0); // Present without vsync
+
+        UINT64 fenceValue = g_fenceLastSignaledValue + 1;
+        g_pd3dCommandQueue->Signal(g_fence, fenceValue);
+        g_fenceLastSignaledValue = fenceValue;
+        frameCtx->FenceValue = fenceValue;
     }
 
-    app.end();
+    WaitForLastSubmittedFrame();
+
+    // Cleanup
+    ImGui_ImplDX12_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImPlot::DestroyContext();
+    ImGui::DestroyContext();
+
+    CleanupDeviceD3D();
+    ::DestroyWindow(hwnd);
+    ::UnregisterClass(wc.lpszClassName, wc.hInstance);
 
     return 0;
+}
+
+// Helper functions
+
+bool CreateDeviceD3D(HWND hWnd)
+{
+    // Setup swap chain
+    DXGI_SWAP_CHAIN_DESC1 sd;
+    {
+        ZeroMemory(&sd, sizeof(sd));
+        sd.BufferCount = NUM_BACK_BUFFERS;
+        sd.Width = 0;
+        sd.Height = 0;
+        sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        sd.SampleDesc.Count = 1;
+        sd.SampleDesc.Quality = 0;
+        sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+        sd.Scaling = DXGI_SCALING_STRETCH;
+        sd.Stereo = FALSE;
+    }
+
+    // [DEBUG] Enable debug interface
+#ifdef DX12_ENABLE_DEBUG_LAYER
+    ID3D12Debug* pdx12Debug = NULL;
+    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&pdx12Debug))))
+        pdx12Debug->EnableDebugLayer();
+#endif
+
+    // Create device
+    D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
+    if (D3D12CreateDevice(NULL, featureLevel, IID_PPV_ARGS(&g_pd3dDevice)) != S_OK)
+        return false;
+
+    // [DEBUG] Setup debug interface to break on any warnings/errors
+#ifdef DX12_ENABLE_DEBUG_LAYER
+    if (pdx12Debug != NULL)
+    {
+        ID3D12InfoQueue* pInfoQueue = NULL;
+        g_pd3dDevice->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
+        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
+        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+        pInfoQueue->Release();
+        pdx12Debug->Release();
+    }
+#endif
+
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        desc.NumDescriptors = NUM_BACK_BUFFERS;
+        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        desc.NodeMask = 1;
+        if (g_pd3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&g_pd3dRtvDescHeap)) != S_OK)
+            return false;
+
+        SIZE_T rtvDescriptorSize = g_pd3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = g_pd3dRtvDescHeap->GetCPUDescriptorHandleForHeapStart();
+        for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
+        {
+            g_mainRenderTargetDescriptor[i] = rtvHandle;
+            rtvHandle.ptr += rtvDescriptorSize;
+        }
+    }
+
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        desc.NumDescriptors = 1;
+        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        if (g_pd3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&g_pd3dSrvDescHeap)) != S_OK)
+            return false;
+    }
+
+    {
+        D3D12_COMMAND_QUEUE_DESC desc = {};
+        desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+        desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+        desc.NodeMask = 1;
+        if (g_pd3dDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(&g_pd3dCommandQueue)) != S_OK)
+            return false;
+    }
+
+    for (UINT i = 0; i < NUM_FRAMES_IN_FLIGHT; i++)
+        if (g_pd3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_frameContext[i].CommandAllocator)) != S_OK)
+            return false;
+
+    if (g_pd3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_frameContext[0].CommandAllocator, NULL, IID_PPV_ARGS(&g_pd3dCommandList)) != S_OK ||
+        g_pd3dCommandList->Close() != S_OK)
+        return false;
+
+    if (g_pd3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_fence)) != S_OK)
+        return false;
+
+    g_fenceEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+    if (g_fenceEvent == NULL)
+        return false;
+
+    {
+        IDXGIFactory4* dxgiFactory = NULL;
+        IDXGISwapChain1* swapChain1 = NULL;
+        if (CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory)) != S_OK)
+            return false;
+        if (dxgiFactory->CreateSwapChainForHwnd(g_pd3dCommandQueue, hWnd, &sd, NULL, NULL, &swapChain1) != S_OK)
+            return false;
+        if (swapChain1->QueryInterface(IID_PPV_ARGS(&g_pSwapChain)) != S_OK)
+            return false;
+        swapChain1->Release();
+        dxgiFactory->Release();
+        g_pSwapChain->SetMaximumFrameLatency(NUM_BACK_BUFFERS);
+        g_hSwapChainWaitableObject = g_pSwapChain->GetFrameLatencyWaitableObject();
+    }
+
+    CreateRenderTarget();
+    return true;
+}
+
+void CleanupDeviceD3D()
+{
+    CleanupRenderTarget();
+    if (g_pSwapChain) { g_pSwapChain->SetFullscreenState(false, NULL); g_pSwapChain->Release(); g_pSwapChain = NULL; }
+    if (g_hSwapChainWaitableObject != NULL) { CloseHandle(g_hSwapChainWaitableObject); }
+    for (UINT i = 0; i < NUM_FRAMES_IN_FLIGHT; i++)
+        if (g_frameContext[i].CommandAllocator) { g_frameContext[i].CommandAllocator->Release(); g_frameContext[i].CommandAllocator = NULL; }
+    if (g_pd3dCommandQueue) { g_pd3dCommandQueue->Release(); g_pd3dCommandQueue = NULL; }
+    if (g_pd3dCommandList) { g_pd3dCommandList->Release(); g_pd3dCommandList = NULL; }
+    if (g_pd3dRtvDescHeap) { g_pd3dRtvDescHeap->Release(); g_pd3dRtvDescHeap = NULL; }
+    if (g_pd3dSrvDescHeap) { g_pd3dSrvDescHeap->Release(); g_pd3dSrvDescHeap = NULL; }
+    if (g_fence) { g_fence->Release(); g_fence = NULL; }
+    if (g_fenceEvent) { CloseHandle(g_fenceEvent); g_fenceEvent = NULL; }
+    if (g_pd3dDevice) { g_pd3dDevice->Release(); g_pd3dDevice = NULL; }
+
+#ifdef DX12_ENABLE_DEBUG_LAYER
+    IDXGIDebug1* pDebug = NULL;
+    if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&pDebug))))
+    {
+        pDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_SUMMARY);
+        pDebug->Release();
+    }
+#endif
+}
+
+void CreateRenderTarget()
+{
+    for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
+    {
+        ID3D12Resource* pBackBuffer = NULL;
+        g_pSwapChain->GetBuffer(i, IID_PPV_ARGS(&pBackBuffer));
+        g_pd3dDevice->CreateRenderTargetView(pBackBuffer, NULL, g_mainRenderTargetDescriptor[i]);
+        g_mainRenderTargetResource[i] = pBackBuffer;
+    }
+}
+
+void CleanupRenderTarget()
+{
+    WaitForLastSubmittedFrame();
+
+    for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
+        if (g_mainRenderTargetResource[i]) { g_mainRenderTargetResource[i]->Release(); g_mainRenderTargetResource[i] = NULL; }
+}
+
+void WaitForLastSubmittedFrame()
+{
+    FrameContext* frameCtx = &g_frameContext[g_frameIndex % NUM_FRAMES_IN_FLIGHT];
+
+    UINT64 fenceValue = frameCtx->FenceValue;
+    if (fenceValue == 0)
+        return; // No fence was signaled
+
+    frameCtx->FenceValue = 0;
+    if (g_fence->GetCompletedValue() >= fenceValue)
+        return;
+
+    g_fence->SetEventOnCompletion(fenceValue, g_fenceEvent);
+    WaitForSingleObject(g_fenceEvent, INFINITE);
+}
+
+FrameContext* WaitForNextFrameResources()
+{
+    UINT nextFrameIndex = g_frameIndex + 1;
+    g_frameIndex = nextFrameIndex;
+
+    HANDLE waitableObjects[] = { g_hSwapChainWaitableObject, NULL };
+    DWORD numWaitableObjects = 1;
+
+    FrameContext* frameCtx = &g_frameContext[nextFrameIndex % NUM_FRAMES_IN_FLIGHT];
+    UINT64 fenceValue = frameCtx->FenceValue;
+    if (fenceValue != 0) // means no fence was signaled
+    {
+        frameCtx->FenceValue = 0;
+        g_fence->SetEventOnCompletion(fenceValue, g_fenceEvent);
+        waitableObjects[1] = g_fenceEvent;
+        numWaitableObjects = 2;
+    }
+
+    WaitForMultipleObjects(numWaitableObjects, waitableObjects, TRUE, INFINITE);
+
+    return frameCtx;
+}
+
+// Forward declare message handler from imgui_impl_win32.cpp
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+// Win32 message handler
+// You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
+// - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
+// - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
+// Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
+LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+        return true;
+
+    switch (msg)
+    {
+    case WM_SIZE:
+        if (g_pd3dDevice != NULL && wParam != SIZE_MINIMIZED)
+        {
+            WaitForLastSubmittedFrame();
+            CleanupRenderTarget();
+            HRESULT result = g_pSwapChain->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
+            assert(SUCCEEDED(result) && "Failed to resize swapchain.");
+            CreateRenderTarget();
+        }
+        return 0;
+    case WM_SYSCOMMAND:
+        if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
+            return 0;
+        break;
+    case WM_DESTROY:
+        ::PostQuitMessage(0);
+        return 0;
+    }
+    return ::DefWindowProc(hWnd, msg, wParam, lParam);
 }
