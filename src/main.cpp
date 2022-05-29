@@ -13,10 +13,55 @@
 
 #include "orbits.h"
 
+class OrbitViewer : public App
+{
+public:
+    void update() override
+    {
+        constexpr int kNumSegments = 1000;
+        float x_data[kNumSegments+1];
+        float y_data[kNumSegments+1];
+        float x_data_mars[kNumSegments + 1];
+        float y_data_mars[kNumSegments + 1];
+
+        double meanEarthRad = EllipticalOrbit::meanRadius(EarthPerihelion, EarthEccentricity);
+        CircularOrbit earthCircularOrbit(meanEarthRad, SolarMass, EarthMass);
+
+        double meanMarsRad = EllipticalOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
+        CircularOrbit marsCircularOrbit(meanMarsRad, SolarMass, MarsMass);
+
+        ImGui::Begin("Orbit control");
+        ImGui::SliderFloat("transfer", &transfer, 0, 1);
+        ImGui::End();
+
+        EllipticalOrbit transferOrbit(earthCircularOrbit.gravitationalConstant(), meanEarthRad, meanEarthRad + (meanMarsRad - meanEarthRad) * transfer);
+
+        ImGui::Begin("Orbit viewer");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+
+        if (ImPlot::BeginPlot("Orbits", ImVec2(-1, -1), ImPlotFlags_Equal)) {
+            ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
+            ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
+            earthCircularOrbit.plot(x_data, y_data, kNumSegments);
+            ImPlot::PlotLine("Earth orbit", x_data, y_data, kNumSegments + 1);
+            marsCircularOrbit.plot(x_data, y_data, kNumSegments);
+            ImPlot::PlotLine("Mars Orbit", x_data, y_data, kNumSegments + 1);
+            transferOrbit.plot(x_data, y_data, kNumSegments, transfer==1? 0.5 : 1);
+            ImPlot::PlotLine("Transfer", x_data, y_data, kNumSegments + 1);
+            ImPlot::EndPlot();
+        }
+        ImGui::End();
+
+        //ImPlot::ShowDemoWindow();
+    }
+
+private:
+    float transfer = 1;
+};
+
 // Main code
 int main(int, char**)
 {
-    App app;
+    OrbitViewer app;
     if (!app.init())
         return -1;
 

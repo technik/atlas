@@ -121,24 +121,8 @@ void App::beginFrame()
 
 void App::update()
 {
-    float x_data[1000] = {};
-    float y_data[1000] = {};
-
-    for (int i = 0; i < 1000; ++i)
-    {
-        x_data[i] = i;
-        y_data[i] = i;
-    }
-
-    {
-        ImGui::Begin("Another Window");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-        ImGui::Text("Hello from another window!");
-        if (ImPlot::BeginPlot("My Plot")) {
-            ImPlot::PlotLine("My Line Plot", x_data, y_data, 1000);
-            ImPlot::EndPlot();
-        }
-        ImGui::End();
-    }
+    ImGui::Begin("Default App");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+    ImGui::End();
 }
 
 void App::render()

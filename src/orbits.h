@@ -73,9 +73,19 @@ public:
 
 	double gravitationalConstant() const { return m_mu; }
 
+	// Expects numSegments+1 capacity in the x and y arrays
 	void plot(float* x, float* y, int numSegments)
 	{
+		for (int i = 0; i < numSegments; ++i)
+		{
+			auto argument = TwoPi * i / numSegments;
+			x[i] = m_radius * cos(argument);
+			y[i] = m_radius * sin(argument);
+		}
 
+		// Close the orbit
+		x[numSegments] = x[0];
+		y[numSegments] = y[0];
 	}
 
 private:
@@ -150,6 +160,18 @@ public:
 	static double meanRadius(double perihelion, double eccentricity)
 	{
 		return perihelion * (1 + eccentricity);
+	}
+
+	// Expects numSegments+1 capacity in the x and y arrays
+	void plot(float* x, float* y, int numSegments, float tmax = 1)
+	{
+		for (int i = 0; i < numSegments+1; ++i)
+		{
+			auto argument = (TwoPi * i / numSegments) * tmax;
+			auto r = radius(argument);
+			x[i] = r * cos(argument);
+			y[i] = r * sin(argument);
+		}
 	}
 
 private:
