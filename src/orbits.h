@@ -73,6 +73,11 @@ public:
 
 	double gravitationalConstant() const { return m_mu; }
 
+	void plot(float* x, float* y, int numSegments)
+	{
+
+	}
+
 private:
 	double m_mu; // Gravitational constant
 	double m_radius;
