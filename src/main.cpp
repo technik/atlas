@@ -28,35 +28,73 @@ public:
         float x_data[kNumSegments+1];
         float y_data[kNumSegments+1];
 
-        ImGui::Begin("Orbit control");
-        ImGui::SliderFloat("transfer", &transfer, 0, 1);
+        if (ImGui::Begin("Orbit control"))
+        {
+            ImGui::Checkbox("Show Earth", &m_showEarth);
+            ImGui::Checkbox("Show Mars", &m_showMars);
+            ImGui::SliderFloat("Transfer eccentricity", &m_transferEccentricity, 0, 1);
+            ImGui::SliderFloat("Transfer argument", &m_transferStartArgument, 0, TwoPi);
+        }
         ImGui::End();
 
-        ImGui::Begin("Orbit viewer");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+        if (ImGui::Begin("Orbit viewer"))
+        {
+            if (ImPlot::BeginPlot("Orbits", ImVec2(-1, -1), ImPlotFlags_Equal))
+            {
+                // Set up rigid axes
+                ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
+                ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
 
-        if (ImPlot::BeginPlot("Orbits", ImVec2(-1, -1), ImPlotFlags_Equal)) {
-            ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
-            ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
-            m_earthOrbit.plot(x_data, y_data, kNumSegments);
-            ImPlot::PlotLine("Earth orbit", x_data, y_data, kNumSegments + 1);
-            m_marsOrbit.plot(x_data, y_data, kNumSegments);
-            ImPlot::PlotLine("Mars Orbit", x_data, y_data, kNumSegments + 1);
-            m_sun.plot(x_data, y_data, 20);
-            ImPlot::SetNextLineStyle(ImVec4(1, 1, 0, 1));
-            ImPlot::PlotLine("Sun", x_data, y_data, 21);
-            ImPlot::EndPlot();
+                // Plot base solar system for context
+                plotBasePlanets();
+
+                m_sun.plot(x_data, y_data, 20);
+                ImPlot::SetNextLineStyle(ImVec4(1, 1, 0, 1));
+                ImPlot::PlotLine("Sun", x_data, y_data, 21);
+
+                // Plot extra orbits
+                auto startRadius = m_earthOrbit.radius(m_transferStartArgument);
+                auto endRadius = m_marsOrbit.radius(m_transferStartArgument + Pi);
+                auto transferOrbit = EllipticalOrbit(SolarGravitationalConstant, startRadius, endRadius, m_transferStartArgument);
+
+                transferOrbit.plot(x_data, y_data, kNumSegments, 0, 1);
+                ImPlot::PlotLine("Transfer orbit", x_data, y_data, kNumSegments + 1);
+
+                ImPlot::EndPlot();
+            }
         }
         ImGui::End();
 
         //ImPlot::ShowDemoWindow();
     }
 
+    void plotBasePlanets()
+    {
+        constexpr int kNumSegments = 1000;
+        float x_data[kNumSegments + 1];
+        float y_data[kNumSegments + 1];
+
+        if (m_showEarth)
+        {
+            m_earthOrbit.plot(x_data, y_data, kNumSegments);
+            ImPlot::PlotLine("Earth orbit", x_data, y_data, kNumSegments + 1);
+        }
+        if (m_showMars)
+        {
+            m_marsOrbit.plot(x_data, y_data, kNumSegments);
+            ImPlot::PlotLine("Mars Orbit", x_data, y_data, kNumSegments + 1);
+        }
+    }
+
 private:
+    bool m_showMars;
+    bool m_showEarth;
     CircularOrbit m_sun; // Use a circular orbit to plot the sun as a circle
     EllipticalOrbit m_marsOrbit;
     EllipticalOrbit m_earthOrbit;
 
-    float transfer = 1;
+    float m_transferStartArgument = 0;
+    float m_transferEccentricity = 0;
 };
 
 // Main code

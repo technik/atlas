@@ -111,8 +111,8 @@ public:
 		, m_mu(focalBodyGravitationalParam)
 		, m_argumentOfPeriapsis(argumentOfPeriapsis)
 	{
-		m_e = (m_apoapsis - m_periapsis) / (m_apoapsis + m_periapsis);
-		m_p = m_periapsis * (1 + m_e);
+		m_eccentricity = (m_apoapsis - m_periapsis) / (m_apoapsis + m_periapsis);
+		m_p = m_periapsis * (1 + m_eccentricity);
 	}
 
 	EllipticalOrbit(const EllipticalOrbit&) = default;
@@ -120,7 +120,7 @@ public:
 
 	double radius(double theta) const
 	{
-		return m_p / (1 + m_e * cos(theta));
+		return m_p / (1 + m_eccentricity * cos(theta - m_argumentOfPeriapsis));
 	}
 
 	double velocity(double theta) const
@@ -166,7 +166,7 @@ public:
 
 	double eccentricity() const
 	{
-		return m_e;
+		return m_eccentricity;
 	}
 
 	static double meanRadius(double perihelion, double eccentricity)
@@ -188,10 +188,10 @@ public:
 
 private:
 	const double m_mu = 1;
-	const double m_periapsis = 1;
-	const double m_apoapsis = 1;
-	const double m_argumentOfPeriapsis = 0;
-	double m_e = 1; // Orbital eccentricity
+	double m_periapsis = 1;
+	double m_apoapsis = 1;
+	double m_argumentOfPeriapsis = 0;
+	double m_eccentricity = 1; // Orbital eccentricity
 	double m_p = 1; // Orbital parameter
 };
 
