@@ -32,8 +32,9 @@ public:
         {
             ImGui::Checkbox("Show Earth", &m_showEarth);
             ImGui::Checkbox("Show Mars", &m_showMars);
-            ImGui::SliderFloat("Transfer eccentricity", &m_transferEccentricity, 0, 1);
+            //ImGui::SliderFloat("Transfer eccentricity", &m_transferEccentricity, 0, 1);
             ImGui::SliderFloat("Transfer argument", &m_transferStartArgument, 0, TwoPi);
+            ImGui::Text("Eccentricity: %f", m_transferEccentricity);
         }
         ImGui::End();
 
@@ -56,6 +57,7 @@ public:
                 auto startRadius = m_earthOrbit.radius(m_transferStartArgument);
                 auto endRadius = m_marsOrbit.radius(m_transferStartArgument + Pi);
                 auto transferOrbit = EllipticalOrbit(SolarGravitationalConstant, startRadius, endRadius, m_transferStartArgument);
+                m_transferEccentricity = transferOrbit.eccentricity();
 
                 transferOrbit.plot(x_data, y_data, kNumSegments, 0, 1);
                 ImPlot::PlotLine("Transfer orbit", x_data, y_data, kNumSegments + 1);
