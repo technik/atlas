@@ -2,6 +2,7 @@
 #include <cassert>
 #include <iostream>
 #include <numbers>
+#include <math/vector.h>
 
 // Math constants
 static constexpr auto Pi = std::numbers::pi_v<double>;
@@ -174,6 +175,12 @@ public:
 		return perihelion * (1 + eccentricity);
 	}
 
+	math::Vec2d position(double argument) const
+	{
+		auto r = radius(argument);
+		return { cos(argument) * r, sin(argument) * r };
+	}
+
 	// Expects numSegments+1 capacity in the x and y arrays
 	void plot(float* x, float* y, int numSegments, float tmin = 0, float tmax = 1)
 	{
@@ -194,6 +201,12 @@ private:
 	double m_eccentricity = 1; // Orbital eccentricity
 	double m_p = 1; // Orbital parameter
 };
+
+double sphereOfInfluenceRadius(float orbiterMass, float perihelion, float aphelion)
+{
+	const auto semimajorAxis = perihelion + aphelion;
+	return semimajorAxis * pow(orbiterMass / SolarMass, 2 / 5.0);
+}
 
 inline EllipticalOrbit HohmannTransfer(const CircularOrbit& startOrbit, const CircularOrbit& destOrbit)
 {

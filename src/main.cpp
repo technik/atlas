@@ -24,9 +24,8 @@ public:
     }
     void update() override
     {
-        constexpr int kNumSegments = 1000;
-        float x_data[kNumSegments+1];
-        float y_data[kNumSegments+1];
+        float x_data[kNumOrbitSegments +1];
+        float y_data[kNumOrbitSegments +1];
 
         if (ImGui::Begin("Orbit control"))
         {
@@ -49,9 +48,9 @@ public:
                 // Plot base solar system for context
                 plotBasePlanets();
 
-                m_sun.plot(x_data, y_data, 20);
+                m_sun.plot(x_data, y_data, kNumObjectSegments);
                 ImPlot::SetNextLineStyle(ImVec4(1, 1, 0, 1));
-                ImPlot::PlotLine("Sun", x_data, y_data, 21);
+                ImPlot::PlotLine("Sun", x_data, y_data, kNumObjectSegments+1);
 
                 // Plot extra orbits
                 auto startRadius = m_earthOrbit.radius(m_transferStartArgument);
@@ -59,8 +58,8 @@ public:
                 auto transferOrbit = EllipticalOrbit(SolarGravitationalConstant, startRadius, endRadius, m_transferStartArgument);
                 m_transferEccentricity = transferOrbit.eccentricity();
 
-                transferOrbit.plot(x_data, y_data, kNumSegments, 0, 1);
-                ImPlot::PlotLine("Transfer orbit", x_data, y_data, kNumSegments + 1);
+                transferOrbit.plot(x_data, y_data, kNumOrbitSegments, 0, 1);
+                ImPlot::PlotLine("Transfer orbit", x_data, y_data, kNumOrbitSegments + 1);
 
                 ImPlot::EndPlot();
             }
@@ -72,23 +71,47 @@ public:
 
     void plotBasePlanets()
     {
-        constexpr int kNumSegments = 1000;
-        float x_data[kNumSegments + 1];
-        float y_data[kNumSegments + 1];
+        float x_data[kNumOrbitSegments + 1];
+        float y_data[kNumOrbitSegments + 1];
 
         if (m_showEarth)
         {
-            m_earthOrbit.plot(x_data, y_data, kNumSegments);
-            ImPlot::PlotLine("Earth orbit", x_data, y_data, kNumSegments + 1);
+            m_earthOrbit.plot(x_data, y_data, kNumOrbitSegments);
+            ImPlot::PlotLine("Earth orbit", x_data, y_data, kNumOrbitSegments + 1);
+            // Plot Earth's sphere of influence
+            auto influenceRadius = sphereOfInfluenceRadius(EarthMass, EarthPerihelion, EarthAphelion);
+            auto xPos = m_earthOrbit.position(m_transferStartArgument);
+
+            plotCircle("Earth influence", xPos.x(), xPos.y(), influenceRadius);
         }
         if (m_showMars)
         {
-            m_marsOrbit.plot(x_data, y_data, kNumSegments);
-            ImPlot::PlotLine("Mars Orbit", x_data, y_data, kNumSegments + 1);
+            m_marsOrbit.plot(x_data, y_data, kNumOrbitSegments);
+            ImPlot::PlotLine("Mars Orbit", x_data, y_data, kNumOrbitSegments + 1);
+            // Plot the Mars's sphere of influence
+            auto influenceRadius = sphereOfInfluenceRadius(MarsMass, MarsPerihelion, MarsAphelion);
+            auto xPos = m_marsOrbit.position(m_transferStartArgument);
+
+            plotCircle("Mars influence", xPos.x(), xPos.y(), influenceRadius);
         }
     }
 
+    static void plotCircle(const char* name, float x0, float y0, float radius)
+    {
+        float x[kNumObjectSegments + 1];
+        float y[kNumObjectSegments + 1];
+        for (int i = 0; i < kNumObjectSegments + 1; ++i)
+        {
+            auto theta = i * TwoPi / kNumObjectSegments;
+            x[i] = radius * cos(theta) + x0;
+            y[i] = radius * sin(theta) + y0;
+        }
+        ImPlot::PlotLine(name, x, y, kNumObjectSegments + 1);
+    }
 private:
+    static constexpr int kNumOrbitSegments = 1000;
+    static constexpr int kNumObjectSegments = 1000;
+
     bool m_showMars;
     bool m_showEarth;
     CircularOrbit m_sun; // Use a circular orbit to plot the sun as a circle
