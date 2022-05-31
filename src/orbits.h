@@ -3,6 +3,11 @@
 #include <iostream>
 #include <numbers>
 #include <math/vector.h>
+#include <chrono>
+
+using namespace std::chrono;
+using namespace std::chrono_literals;
+using TimePoint = std::chrono::time_point<std::chrono::system_clock>;
 
 // Math constants
 static constexpr auto Pi = std::numbers::pi_v<double>;
@@ -55,6 +60,8 @@ static constexpr double MarsEccentricity = 0.0934;
 static constexpr double MarsPeriHelArg = 286.502_deg;
 static constexpr double MarsLongitudeOfAscendingNode = 49.57854_deg;
 static constexpr double MarsMeanLongitude = 355.45332_deg;
+
+static constexpr TimePoint J2000 = sys_days(2000y/January/1);
 
 inline double daysFromSeconds(double seconds)
 {
@@ -111,11 +118,11 @@ private:
 };
 
 // For now, it assumes all orbits lay within the ecliptic plane
-class EllipticalOrbit
+class ConicOrbit
 {
 public:
-	EllipticalOrbit() = default;
-	EllipticalOrbit(
+	ConicOrbit() = default;
+	ConicOrbit(
 		double focalBodyGravitationalParam,
 		double periapsis,
 		double apoapsis,
@@ -129,8 +136,8 @@ public:
 		m_p = m_periapsis * (1 + m_eccentricity);
 	}
 
-	EllipticalOrbit(const EllipticalOrbit&) = default;
-	EllipticalOrbit& operator=(const EllipticalOrbit&) = default;
+	ConicOrbit(const ConicOrbit&) = default;
+	ConicOrbit& operator=(const ConicOrbit&) = default;
 
 	double radius(double theta) const
 	{
@@ -206,6 +213,9 @@ public:
 		}
 	}
 
+	constexpr bool isElliptical() const { return m_eccentricity < 1; }
+	constexpr bool isParabolical() const { return m_eccentricity == 1; }
+	constexpr bool isHyperbolical() const { return m_eccentricity > 1; }
 private:
 	const double m_mu = 1;
 	double m_periapsis = 1;
@@ -214,6 +224,10 @@ private:
 	double m_eccentricity = 1; // Orbital eccentricity
 	double m_p = 1; // Orbital parameter
 };
+
+using EllipticalOrbit = ConicOrbit;
+using ParabolicalOrbit = ConicOrbit;
+using HyperbolicalOrbit = ConicOrbit;
 
 double sphereOfInfluenceRadius(float orbiterMass, float perihelion, float aphelion)
 {

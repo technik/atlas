@@ -14,5 +14,12 @@
 class MarsOrbiter
 {
 public:
-    MarsOrbiter();
+    MarsOrbiter(TimePoint departureTime);
+    double totalDeltaV() const;
+    double transitTime() const;
+
+private:
+    ConicOrbit m_earthEscapeTrajectory;
+    EllipticalOrbit m_transferOrbit;
+    ConicOrbit m_marsCaptureTrajectory;
 };
