@@ -56,6 +56,7 @@ static constexpr double EarthMeanLongitude = 100.46435_deg;
 static constexpr double MarsAphelion = 249.2e6_km;
 static constexpr double MarsPerihelion = 206.7e6_km;
 static constexpr double MarsSemimajorAxis = 227.9392e6_km;
+static constexpr double MarsInclination = 1.85061_deg;
 static constexpr double MarsEccentricity = 0.0934;
 static constexpr double MarsPeriHelArg = 286.502_deg;
 static constexpr double MarsLongitudeOfAscendingNode = 49.57854_deg;
@@ -126,11 +127,15 @@ public:
 		double focalBodyGravitationalParam,
 		double periapsis,
 		double apoapsis,
-		double argumentOfPeriapsis = 0)
+		double inclination,
+		double argumentOfPeriapsis,
+		double longitudeOfAscendingNode,
+		double meanLongitudAtEpoch=0)
 		: m_periapsis(periapsis)
 		, m_apoapsis(apoapsis)
-		, m_mu(focalBodyGravitationalParam)
 		, m_argumentOfPeriapsis(argumentOfPeriapsis)
+		, m_longitudeOfAscendingNode(longitudeOfAscendingNode)
+		, m_mu(focalBodyGravitationalParam)
 	{
 		m_eccentricity = (m_apoapsis - m_periapsis) / (m_apoapsis + m_periapsis);
 		m_p = m_periapsis * (1 + m_eccentricity);
@@ -139,15 +144,15 @@ public:
 	ConicOrbit(const ConicOrbit&) = default;
 	ConicOrbit& operator=(const ConicOrbit&) = default;
 
-	double radius(double theta) const
+	double radius(double anomaly) const
 	{
-		return m_p / (1 + m_eccentricity * cos(theta - m_argumentOfPeriapsis));
+		return m_p / (1 + m_eccentricity * cos(anomaly - m_argumentOfPeriapsis));
 	}
 
-	double velocity(double theta) const
+	double speed(double anomaly) const
 	{
 		const auto a = semiMajorAxis();
-		const auto r = radius(theta);
+		const auto r = radius(anomaly);
 		return sqrt(2 * m_mu / r - m_mu / a);
 	}
 
@@ -161,14 +166,7 @@ public:
 		return sqrt(2 * m_mu * (1 / m_apoapsis - 1 / (m_periapsis + m_apoapsis)));
 	}
 
-	double deltaV(double v0, double v1) const
-	{
-		const auto deltaVStart = abs(v0 - perihelionVelocity());
-		const auto deltaVEnd = abs(v1 - aphelionVelocity());
-		return deltaVStart + deltaVEnd;
-	}
-
-	double semiMajorAxis() const
+	constexpr double semiMajorAxis() const
 	{
 		return 0.5 * (m_apoapsis + m_periapsis);
 	}
@@ -179,18 +177,12 @@ public:
 		return TwoPi * a * sqrt(a / m_mu);
 	}
 
-	double transferTime() const
-	{
-		const auto a = semiMajorAxis();
-		return Pi * a * sqrt(a / m_mu);
-	}
-
-	double eccentricity() const
+	constexpr double eccentricity() const
 	{
 		return m_eccentricity;
 	}
 
-	static double meanRadius(double perihelion, double eccentricity)
+	constexpr static double meanRadius(double perihelion, double eccentricity)
 	{
 		return perihelion * (1 + eccentricity);
 	}
@@ -202,8 +194,10 @@ public:
 	}
 
 	// Expects numSegments+1 capacity in the x and y arrays
-	void plot(float* x, float* y, int numSegments, float tmin = 0, float tmax = 1)
+	void plot(float* x, float* y, int numSegments, float tmin = 0, float tmax = 1) const
 	{
+		assert(isElliptical()); // Plotting open trajectories is not supported.
+
 		for (int i = 0; i < numSegments+1; ++i)
 		{
 			auto argument = (TwoPi * i / numSegments) * tmax;
@@ -216,11 +210,26 @@ public:
 	constexpr bool isElliptical() const { return m_eccentricity < 1; }
 	constexpr bool isParabolical() const { return m_eccentricity == 1; }
 	constexpr bool isHyperbolical() const { return m_eccentricity > 1; }
+
+	double TrueAnomalyFromMeanAnomaly(double meanAnomaly)
+	{
+		const double timeSincePeriapsis = meanAnomaly * period() / TwoPi;
+	}
+
+	double TrueAnomalyFromMeanLongitude(double meanLongitude, double longitudeOfPeriapsis)
+	{
+		const double meanLongitudeSinceAscendingNode = meanLongitude - longitudeOfPeriapsis;
+		const double meanAnomalySinceAscendingNode = meanLongitudeSinceAscendingNode; // "Time" since last periapsis at epoch
+	}
+
 private:
-	const double m_mu = 1;
 	double m_periapsis = 1;
 	double m_apoapsis = 1;
 	double m_argumentOfPeriapsis = 0;
+	double m_longitudeOfAscendingNode = 0;
+
+	// Constants
+	const double m_mu = 1;
 	double m_eccentricity = 1; // Orbital eccentricity
 	double m_p = 1; // Orbital parameter
 };
@@ -229,74 +238,24 @@ using EllipticalOrbit = ConicOrbit;
 using ParabolicalOrbit = ConicOrbit;
 using HyperbolicalOrbit = ConicOrbit;
 
-double sphereOfInfluenceRadius(float orbiterMass, float perihelion, float aphelion)
+static const EllipticalOrbit EarthOrbit(
+	SolarGravitationalConstant,
+	EarthPerihelion, EarthAphelion,
+	0.0_deg,
+	EarthPeriHelArg,
+	EarthLongitudeOfAscendingNode,
+	EarthMeanLongitude);
+
+static const EllipticalOrbit MarsOrbit(
+	SolarGravitationalConstant,
+	MarsPerihelion, MarsAphelion,
+	MarsInclination,
+	MarsPeriHelArg,
+	MarsLongitudeOfAscendingNode,
+	MarsMeanLongitude);
+
+inline double sphereOfInfluenceRadius(float orbiterMass, float perihelion, float aphelion)
 {
 	const auto semimajorAxis = perihelion + aphelion;
 	return semimajorAxis * pow(orbiterMass / SolarMass, 2 / 5.0);
-}
-
-inline EllipticalOrbit HohmannTransfer(const CircularOrbit& startOrbit, const CircularOrbit& destOrbit)
-{
-	// Make sure the two orbits are compatible
-	assert(startOrbit.gravitationalConstant() == destOrbit.gravitationalConstant());
-	auto mu = startOrbit.gravitationalConstant();
-	return EllipticalOrbit(mu, startOrbit.radius(), destOrbit.radius());
-}
-
-inline int plotMission(int, const char**)
-{
-	double meanMarsRad = EllipticalOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
-	CircularOrbit marsCircularOrbit(meanMarsRad, SolarMass, MarsMass);
-	std::cout << "Mars큦 mean distance from the sun:" << meanMarsRad << "m\n";
-	std::cout << "Mars큦 average speed: " << marsCircularOrbit.velocity() << "m/s\n";
-
-	double meanEarthRad = EllipticalOrbit::meanRadius(EarthPerihelion, EarthEccentricity);
-	CircularOrbit earthCircularOrbit(meanEarthRad, SolarMass, EarthMass);
-	std::cout << "Mars큦 mean distance from the sun:" << meanEarthRad << "m\n";
-	std::cout << "Earth큦 average speed: " << earthCircularOrbit.velocity() << "m/s\n";
-
-	// Compute first approx Earth-Mars Hohmann transfer
-	EllipticalOrbit earthMarsTransfer(SolarGravitationalConstant, meanEarthRad, meanMarsRad);
-	std::cout << "Earth-mass Hohmann transfer eccentricity: " << earthMarsTransfer.eccentricity() << "\n";
-	std::cout << "Hohmann transfer time Earth to Mars: " << daysFromSeconds(earthMarsTransfer.transferTime()) << " days\n";
-	auto deltaV = earthMarsTransfer.deltaV(earthCircularOrbit.velocity(), marsCircularOrbit.velocity());
-	std::cout << "Required deltaV: " << deltaV << " m/s\n";
-
-	// Suboptimal interception transfer analysis
-	std::cout << "Computing Mars to Earth outbound tangent interception ellipses\n";
-	const auto marsMeanRadius = EllipticalOrbit::meanRadius(MarsPerihelion, MarsEccentricity);
-	const auto earthMeanRadius = EllipticalOrbit::meanRadius(EarthPerihelion, EarthEccentricity);
-	const auto radiiRatio = marsMeanRadius / earthMeanRadius;
-	std::cout << "Mars/Earth radius ratio = " << radiiRatio << "\n";
-
-	// Compute the delta-v requisites of orbits tangential to earth's orbits, that intersect mars's orbit.
-	// This only takes into account the earth orbit to transfer insertion delta-V, but not the transfer to mars orbit.
-	// Phi is the angle between earth on departure, and mars on arrival.
-	// Assuming circular orbits.
-	// The maximun travel phase is Pi, corresponding to a Hohmann transfer.
-	// The minimun travel phase would be acos(marsMeanOrbitRadius/earthMeanOrbitRadius), but that would require infinite
-	// energy and a straight line trajectory.
-	// Instead, we can set a limit to injection DV, travel time or phase.
-	const int numSamples = 20;
-	const auto earthV = earthCircularOrbit.velocity();
-	const auto marsV = marsCircularOrbit.velocity();
-	for (int i = 0; i < numSamples; ++i)
-	{
-		const auto phi = (0.5f * Pi * i) / (numSamples - 1) + Pi / 2;
-		// Interception point
-		const auto yi = radiiRatio * sin(phi);
-		const auto xi = radiiRatio * cos(phi);
-
-		// Compute eccentricity of interception orbit
-		const auto e = (radiiRatio - 1) / (1 + xi);
-		// Orbital parameter
-		const auto p = (1 + e) * earthMeanRadius;
-		const auto h = sqrt(SolarGravitationalConstant * p);
-		const auto v0 = h / earthMeanRadius;
-
-		// Compute flight time using Lambert's theorem
-		std::cout << "Phi: " << phi << ", deltaV: " << v0 - earthV << "\n";
-	}
-
-	return 0;
 }

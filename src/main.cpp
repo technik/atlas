@@ -18,8 +18,6 @@ class OrbitViewer : public App
 public:
     OrbitViewer()
         : m_sun(SolarRadius, SolarMass)
-        , m_marsOrbit(SolarGravitationalConstant, MarsPerihelion, MarsAphelion, MarsPeriHelArg + MarsLongitudeOfAscendingNode)
-        , m_earthOrbit(SolarGravitationalConstant, EarthPerihelion, EarthAphelion, EarthPeriHelArg + EarthLongitudeOfAscendingNode)
     {
     }
 
@@ -54,9 +52,14 @@ public:
                 ImPlot::PlotLine("Sun", x_data, y_data, kNumObjectSegments+1);
 
                 // Plot extra orbits
-                auto startRadius = m_earthOrbit.radius(m_transferStartArgument);
-                auto endRadius = m_marsOrbit.radius(m_transferStartArgument + Pi);
-                auto transferOrbit = EllipticalOrbit(SolarGravitationalConstant, startRadius, endRadius, m_transferStartArgument);
+                auto startRadius = EarthOrbit.radius(m_transferStartArgument);
+                auto endRadius = MarsOrbit.radius(m_transferStartArgument + Pi);
+                auto transferOrbit = EllipticalOrbit(SolarGravitationalConstant,
+                    startRadius, endRadius,
+                    0.0_deg,
+                    m_transferStartArgument,
+                    EarthLongitudeOfAscendingNode,
+                    EarthMeanLongitude);
                 m_transferEccentricity = transferOrbit.eccentricity();
 
                 transferOrbit.plot(x_data, y_data, kNumOrbitSegments, 0, 1);
@@ -78,11 +81,11 @@ public:
         if (m_showEarth)
         {
             ImPlot::SetNextLineStyle(EarthColor);
-            m_earthOrbit.plot(x_data, y_data, kNumOrbitSegments);
+            EarthOrbit.plot(x_data, y_data, kNumOrbitSegments);
             ImPlot::PlotLine("Earth orbit", x_data, y_data, kNumOrbitSegments + 1);
             // Plot Earth's sphere of influence
             auto influenceRadius = sphereOfInfluenceRadius(EarthMass, EarthPerihelion, EarthAphelion);
-            auto xPos = m_earthOrbit.position(m_transferStartArgument);
+            auto xPos = EarthOrbit.position(m_transferStartArgument);
 
             ImPlot::SetNextLineStyle(EarthColor);
             plotCircle("Earth influence", xPos.x(), xPos.y(), influenceRadius);
@@ -90,11 +93,11 @@ public:
         if (m_showMars)
         {
             ImPlot::SetNextLineStyle(MarsColor);
-            m_marsOrbit.plot(x_data, y_data, kNumOrbitSegments);
+            MarsOrbit.plot(x_data, y_data, kNumOrbitSegments);
             ImPlot::PlotLine("Mars Orbit", x_data, y_data, kNumOrbitSegments + 1);
             // Plot the Mars's sphere of influence
             auto influenceRadius = sphereOfInfluenceRadius(MarsMass, MarsPerihelion, MarsAphelion);
-            auto xPos = m_marsOrbit.position(m_transferStartArgument);
+            auto xPos = MarsOrbit.position(m_transferStartArgument);
 
             ImPlot::SetNextLineStyle(MarsColor);
             plotCircle("Mars influence", xPos.x(), xPos.y(), influenceRadius);
@@ -123,8 +126,6 @@ private:
     bool m_showMars;
     bool m_showEarth;
     CircularOrbit m_sun; // Use a circular orbit to plot the sun as a circle
-    EllipticalOrbit m_marsOrbit;
-    EllipticalOrbit m_earthOrbit;
 
     float m_transferStartArgument = 0;
     float m_transferEccentricity = 0;

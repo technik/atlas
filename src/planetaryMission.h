@@ -18,6 +18,8 @@ public:
     double totalDeltaV() const;
     double transitTime() const;
 
+    void plot() const;
+
 private:
     ConicOrbit m_earthEscapeTrajectory;
     EllipticalOrbit m_transferOrbit;
