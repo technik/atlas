@@ -18,10 +18,11 @@ class OrbitViewer : public App
 public:
     OrbitViewer()
         : m_sun(SolarRadius, SolarMass)
-        , m_marsOrbit(SolarGravitationalConstant, MarsPerihelion, MarsAphelion, MarsPeriHelArg)
-        , m_earthOrbit(SolarGravitationalConstant, EarthPerihelion, EarthAphelion, EarthPeriHelArg)
+        , m_marsOrbit(SolarGravitationalConstant, MarsPerihelion, MarsAphelion, MarsPeriHelArg + MarsLongitudeOfAscendingNode)
+        , m_earthOrbit(SolarGravitationalConstant, EarthPerihelion, EarthAphelion, EarthPeriHelArg + EarthLongitudeOfAscendingNode)
     {
     }
+
     void update() override
     {
         float x_data[kNumOrbitSegments +1];
@@ -49,7 +50,7 @@ public:
                 plotBasePlanets();
 
                 m_sun.plot(x_data, y_data, kNumObjectSegments);
-                ImPlot::SetNextLineStyle(ImVec4(1, 1, 0, 1));
+                ImPlot::SetNextLineStyle(SunColor);
                 ImPlot::PlotLine("Sun", x_data, y_data, kNumObjectSegments+1);
 
                 // Plot extra orbits
@@ -76,22 +77,26 @@ public:
 
         if (m_showEarth)
         {
+            ImPlot::SetNextLineStyle(EarthColor);
             m_earthOrbit.plot(x_data, y_data, kNumOrbitSegments);
             ImPlot::PlotLine("Earth orbit", x_data, y_data, kNumOrbitSegments + 1);
             // Plot Earth's sphere of influence
             auto influenceRadius = sphereOfInfluenceRadius(EarthMass, EarthPerihelion, EarthAphelion);
             auto xPos = m_earthOrbit.position(m_transferStartArgument);
 
+            ImPlot::SetNextLineStyle(EarthColor);
             plotCircle("Earth influence", xPos.x(), xPos.y(), influenceRadius);
         }
         if (m_showMars)
         {
+            ImPlot::SetNextLineStyle(MarsColor);
             m_marsOrbit.plot(x_data, y_data, kNumOrbitSegments);
             ImPlot::PlotLine("Mars Orbit", x_data, y_data, kNumOrbitSegments + 1);
             // Plot the Mars's sphere of influence
             auto influenceRadius = sphereOfInfluenceRadius(MarsMass, MarsPerihelion, MarsAphelion);
             auto xPos = m_marsOrbit.position(m_transferStartArgument);
 
+            ImPlot::SetNextLineStyle(MarsColor);
             plotCircle("Mars influence", xPos.x(), xPos.y(), influenceRadius);
         }
     }
@@ -109,6 +114,9 @@ public:
         ImPlot::PlotLine(name, x, y, kNumObjectSegments + 1);
     }
 private:
+    static constexpr auto EarthColor = ImVec4(0.02624122189f, 0.6866853124353135f, 1.f, 1.f);
+    static constexpr auto MarsColor = ImVec4(1.f, 86/255.f, 25/255.f, 1.f);
+    static constexpr auto SunColor = ImVec4(1.0f, 0.84687323f, 0.0f, 1.f);
     static constexpr int kNumOrbitSegments = 1000;
     static constexpr int kNumObjectSegments = 1000;
 

@@ -7,10 +7,19 @@
 // Math constants
 static constexpr auto Pi = std::numbers::pi_v<double>;
 static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
+constexpr long double operator "" _km(long double distance)
+{
+	return distance * 1000;
+}
 
 inline constexpr double RadFromDeg(double deg)
 {
 	return deg * (Pi / 180);
+}
+
+constexpr long double operator "" _deg(long double degrees)
+{
+	return RadFromDeg(degrees);
 }
 
 // Physical constants
@@ -28,20 +37,24 @@ static constexpr double SolarGravitationalConstant = 1.32712440018e20;
 
 // Mean distances from the sun
 
-// Other orbital parameters
-static constexpr double EarthAphelion = 1.521e11;
-static constexpr double EarthPerihelion = 1.47095e11;
-static constexpr double EarthSemimajorAxis = 1.49598023e11;
+// Data sourced from https://nssdc.gsfc.nasa.gov/planetary/factsheet/fact_notes.html
+// Referred to the J2000 epoch
+static constexpr double EarthAphelion = 152.1e6_km;
+static constexpr double EarthPerihelion = 147.095e6_km;
+static constexpr double EarthSemimajorAxis = 149.598023e6_km;
 static constexpr double EarthEccentricity = 0.0167086;
-static constexpr double EarthMeanAnomaly = RadFromDeg(358.617);
-static constexpr double EarthPeriHelArg = RadFromDeg(114.207);
+static constexpr double EarthMeanAnomaly = 358.617_deg;
+static constexpr double EarthPeriHelArg = 114.207_deg;
+static constexpr double EarthLongitudeOfAscendingNode = -11.26064_deg;
+static constexpr double EarthMeanLongitude = 100.46435_deg;
 
-static constexpr double MarsAphelion = 2.492e11;
-static constexpr double MarsPerihelion = 2.067e11;
-static constexpr double MarsSemimajorAxis = 2.279392e11;
+static constexpr double MarsAphelion = 249.2e6_km;
+static constexpr double MarsPerihelion = 206.7e6_km;
+static constexpr double MarsSemimajorAxis = 227.9392e6_km;
 static constexpr double MarsEccentricity = 0.0934;
-static constexpr double MarsLongAscNode = RadFromDeg(49.558);
-static constexpr double MarsPeriHelArg = RadFromDeg(286.502);
+static constexpr double MarsPeriHelArg = 286.502_deg;
+static constexpr double MarsLongitudeOfAscendingNode = 49.57854_deg;
+static constexpr double MarsMeanLongitude = 355.45332_deg;
 
 inline double daysFromSeconds(double seconds)
 {
