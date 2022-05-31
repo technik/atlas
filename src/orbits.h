@@ -130,15 +130,17 @@ public:
 		double inclination,
 		double argumentOfPeriapsis,
 		double longitudeOfAscendingNode,
-		double meanLongitudAtEpoch=0)
+		double meanLongitudeAtEpoch=0)
 		: m_periapsis(periapsis)
 		, m_apoapsis(apoapsis)
 		, m_argumentOfPeriapsis(argumentOfPeriapsis)
 		, m_longitudeOfAscendingNode(longitudeOfAscendingNode)
+		, m_meanLongitudeAtEpoch(meanLongitudeAtEpoch)
 		, m_mu(focalBodyGravitationalParam)
 	{
 		m_eccentricity = (m_apoapsis - m_periapsis) / (m_apoapsis + m_periapsis);
 		m_p = m_periapsis * (1 + m_eccentricity);
+		m_meanAnomalyAtEpoch = meanLongitudeAtEpoch - longitudeOfAscendingNode - argumentOfPeriapsis;
 	}
 
 	ConicOrbit(const ConicOrbit&) = default;
@@ -222,14 +224,57 @@ public:
 		const double meanAnomalySinceAscendingNode = meanLongitudeSinceAscendingNode; // "Time" since last periapsis at epoch
 	}
 
+	double MeanAnomaly(TimePoint time) const
+	{
+		assert(time >= J2000);
+
+		// Time since epoch
+		const auto timeSinceEpoch = duration_cast<duration<double, seconds::period>>(time - J2000).count();
+		const auto numOrbits = timeSinceEpoch / period() + m_meanAnomalyAtEpoch / TwoPi + 1; // Make sure we're positive
+
+		// Time since the start of last orbit
+		const auto meanAnomaly = TwoPi * (numOrbits - std::floor(numOrbits));
+
+		return meanAnomaly;
+	}
+
+	double TrueAnomaly(TimePoint time) const
+	{
+		const auto meanAnomaly = MeanAnomaly(time);
+
+		return TrueAnomalyFromMeanAnomaly(meanAnomaly);
+	}
+
+	double TrueAnomalyFromMeanAnomaly(double M) const
+	{
+		assert(M >= -Pi && M <= TwoPi);
+
+		// Center anomaly range around 0 to leverage symmetry
+		if (M >= Pi)
+			M -= TwoPi;
+
+		// Using a fourier expansion (should only be used with small eccentricities).
+		const double e = m_eccentricity;
+		const double e2 = e * e;
+		const double e3 = e2 * e;
+		return M + (2 * e + e3 / 4) * sin(M) + 5 * e2 / 4 * sin(2 * M) + 13 * e3 / 12 * sin(3 * M);
+
+		// Note: If higher precision is needed for highly elliptic orbits, we can either implement
+		// the newton-raphson method or generate a lookup table of eccentric anomalies for binary search.
+	}
+
 private:
 	double m_periapsis = 1;
 	double m_apoapsis = 1;
 	double m_argumentOfPeriapsis = 0;
 	double m_longitudeOfAscendingNode = 0;
+	double m_meanLongitudeAtEpoch = 0;
+
+	// Precomputed
+	double m_meanAnomalyAtEpoch = 0;
 
 	// Constants
-	const double m_mu = 1;
+	double m_mu = 1;
 	double m_eccentricity = 1; // Orbital eccentricity
 	double m_p = 1; // Orbital parameter
 };
@@ -239,7 +284,7 @@ using ParabolicalOrbit = ConicOrbit;
 using HyperbolicalOrbit = ConicOrbit;
 
 static const EllipticalOrbit EarthOrbit(
-	SolarGravitationalConstant,
+	G*(SolarMass + EarthMass),
 	EarthPerihelion, EarthAphelion,
 	0.0_deg,
 	EarthPeriHelArg,
@@ -247,7 +292,7 @@ static const EllipticalOrbit EarthOrbit(
 	EarthMeanLongitude);
 
 static const EllipticalOrbit MarsOrbit(
-	SolarGravitationalConstant,
+	G* (SolarMass + MarsMass),
 	MarsPerihelion, MarsAphelion,
 	MarsInclination,
 	MarsPeriHelArg,

@@ -12,6 +12,7 @@
 #include "app.h"
 
 #include "orbits.h"
+#include "planetaryMission.h"
 
 class OrbitViewer : public App
 {
@@ -38,6 +39,10 @@ public:
 
         if (ImGui::Begin("Orbit viewer"))
         {
+            // Plot visualization time
+            ImGui::SliderFloat("Time", &m_currentTime, 20.f, 30.f);
+            TimePoint vizT = J2000 + duration_cast<seconds>((2030y - 2000y) * ((m_currentTime)/30));
+
             if (ImPlot::BeginPlot("Orbits", ImVec2(-1, -1), ImPlotFlags_Equal))
             {
                 // Set up rigid axes
@@ -45,24 +50,16 @@ public:
                 ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
 
                 // Plot base solar system for context
-                plotBasePlanets();
+                plotBasePlanets(vizT);
 
                 m_sun.plot(x_data, y_data, kNumObjectSegments);
                 ImPlot::SetNextLineStyle(SunColor);
                 ImPlot::PlotLine("Sun", x_data, y_data, kNumObjectSegments+1);
 
                 // Plot extra orbits
-                auto startRadius = EarthOrbit.radius(m_transferStartArgument);
-                auto endRadius = MarsOrbit.radius(m_transferStartArgument + Pi);
-                auto transferOrbit = EllipticalOrbit(SolarGravitationalConstant,
-                    startRadius, endRadius,
-                    0.0_deg,
-                    m_transferStartArgument,
-                    EarthLongitudeOfAscendingNode,
-                    EarthMeanLongitude);
-                m_transferEccentricity = transferOrbit.eccentricity();
+                MarsOrbiter orbiterMission(vizT);
 
-                transferOrbit.plot(x_data, y_data, kNumOrbitSegments, 0, 1);
+                orbiterMission.plot(x_data, y_data, kNumOrbitSegments);
                 ImPlot::PlotLine("Transfer orbit", x_data, y_data, kNumOrbitSegments + 1);
 
                 ImPlot::EndPlot();
@@ -73,7 +70,7 @@ public:
         //ImPlot::ShowDemoWindow();
     }
 
-    void plotBasePlanets()
+    void plotBasePlanets(TimePoint vizT)
     {
         float x_data[kNumOrbitSegments + 1];
         float y_data[kNumOrbitSegments + 1];
@@ -83,9 +80,11 @@ public:
             ImPlot::SetNextLineStyle(EarthColor);
             EarthOrbit.plot(x_data, y_data, kNumOrbitSegments);
             ImPlot::PlotLine("Earth orbit", x_data, y_data, kNumOrbitSegments + 1);
+
             // Plot Earth's sphere of influence
+            auto earthTrueAnomaly = EarthOrbit.TrueAnomaly(vizT);
             auto influenceRadius = sphereOfInfluenceRadius(EarthMass, EarthPerihelion, EarthAphelion);
-            auto xPos = EarthOrbit.position(m_transferStartArgument);
+            auto xPos = EarthOrbit.position(earthTrueAnomaly);
 
             ImPlot::SetNextLineStyle(EarthColor);
             plotCircle("Earth influence", xPos.x(), xPos.y(), influenceRadius);
@@ -95,9 +94,11 @@ public:
             ImPlot::SetNextLineStyle(MarsColor);
             MarsOrbit.plot(x_data, y_data, kNumOrbitSegments);
             ImPlot::PlotLine("Mars Orbit", x_data, y_data, kNumOrbitSegments + 1);
+
             // Plot the Mars's sphere of influence
+            auto marsTrueAnomaly = MarsOrbit.TrueAnomaly(vizT);
             auto influenceRadius = sphereOfInfluenceRadius(MarsMass, MarsPerihelion, MarsAphelion);
-            auto xPos = MarsOrbit.position(m_transferStartArgument);
+            auto xPos = MarsOrbit.position(marsTrueAnomaly);
 
             ImPlot::SetNextLineStyle(MarsColor);
             plotCircle("Mars influence", xPos.x(), xPos.y(), influenceRadius);
@@ -129,6 +130,7 @@ private:
 
     float m_transferStartArgument = 0;
     float m_transferEccentricity = 0;
+    float m_currentTime = 22;
 };
 
 // Main code

@@ -18,7 +18,10 @@ public:
     double totalDeltaV() const;
     double transitTime() const;
 
-    void plot() const;
+    void plot(float* x, float* y, int numSegments) const
+    {
+        m_transferOrbit.plot(x, y, numSegments, 0, 1);
+    }
 
 private:
     ConicOrbit m_earthEscapeTrajectory;
