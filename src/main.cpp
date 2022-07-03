@@ -1,142 +1,200 @@
-// Dear ImGui: standalone example application for DirectX 12
-// If you are new to Dear ImGui, read documentation from the docs/ folder + read the top of imgui.cpp.
-// Read online: https://github.com/ocornut/imgui/tree/master/docs
-
-// Important: to compile on 32-bit systems, the DirectX12 backend requires code to be compiled with '#define ImTextureID ImU64'.
-// This is because we need ImTextureID to carry a 64-bit value and by default ImTextureID is defined as void*.
-// This define is set in the example .vcxproj file and need to be replicated in your app or by adding it to your imconfig.h file.
+// Molecular dynamics playground
 
 #include "imgui.h"
 #include "implot.h"
 #include <cmath>
 #include "app.h"
+#include <math/vector.h>
+#include <numbers>
+#include <random>
 
-#include "orbits.h"
-#include "planetaryMission.h"
+static constexpr auto Pi = std::numbers::pi_v<double>;
+static constexpr auto TwoPi = 2 * std::numbers::pi_v<double>;
 
-class OrbitViewer : public App
+using namespace math;
+
+class ArgonSimulation : public App
 {
 public:
-    OrbitViewer()
-        : m_sun(SolarRadius, SolarMass)
+    bool show = true;
+    bool freeze = true;
+    ArgonSimulation()
     {
+        // Init the simulation pool
+        scatterParticles();
     }
 
     void update() override
     {
-        float x_data[kNumOrbitSegments +1];
-        float y_data[kNumOrbitSegments +1];
-
-        if (ImGui::Begin("Orbit control"))
+        // Update simulation
+        step();
+        // Plot state
+        if(ImGui::Begin("particles"))
         {
-            ImGui::Checkbox("Show Earth", &m_showEarth);
-            ImGui::Checkbox("Show Mars", &m_showMars);
-            //ImGui::SliderFloat("Transfer eccentricity", &m_transferEccentricity, 0, 1);
-            ImGui::SliderFloat("Transfer argument", &m_transferStartArgument, 0, TwoPi);
-            ImGui::Text("Eccentricity: %f", m_transferEccentricity);
+            if (ImGui::Button("Scatter"))
+            {
+                scatterParticles();
+            }
+            ImGui::Checkbox("Freeze", &freeze);
+            drawParticles(m_particles);
         }
         ImGui::End();
+    }
 
-        if (ImGui::Begin("Orbit viewer"))
+private:
+    struct AtomBuffer
+    {
+        AtomBuffer()
         {
-            // Plot visualization time
-            ImGui::SliderFloat("Time", &m_currentTime, 20.f, 30.f);
-            TimePoint vizT = J2000 + duration_cast<seconds>((2030y - 2000y) * ((m_currentTime)/30));
+            pos = new Vec3d[N];
+            vel = new Vec3d[N];
+            acc = new Vec3d[N];
 
-            if (ImPlot::BeginPlot("Orbits", ImVec2(-1, -1), ImPlotFlags_Equal))
+            for(int i = 0; i < N; ++i)
             {
-                // Set up rigid axes
-                ImPlot::SetupAxis(ImAxis_X1, NULL, ImPlotAxisFlags_AuxDefault);
-                ImPlot::SetupAxis(ImAxis_Y1, NULL, ImPlotAxisFlags_AuxDefault);
-
-                // Plot base solar system for context
-                plotBasePlanets(vizT);
-
-                m_sun.plot(x_data, y_data, kNumObjectSegments);
-                ImPlot::SetNextLineStyle(SunColor);
-                ImPlot::PlotLine("Sun", x_data, y_data, kNumObjectSegments+1);
-
-                // Plot extra orbits
-                MarsOrbiter orbiterMission(vizT);
-
-                orbiterMission.plot(x_data, y_data, kNumOrbitSegments);
-                ImPlot::PlotLine("Transfer orbit", x_data, y_data, kNumOrbitSegments + 1);
-
-                ImPlot::EndPlot();
+                vel[i] = Vec3d{0,0,0};
+                acc[i] = Vec3d{0,0,0};
             }
         }
-        ImGui::End();
+        ~AtomBuffer()
+        {
+            delete[] pos;
+            delete[] vel;
+            delete[] acc;
+        }
 
-        //ImPlot::ShowDemoWindow();
-    }
+        Vec3d* pos = nullptr;
+        Vec3d* vel = nullptr;
+        Vec3d* acc = nullptr;
 
-    void plotBasePlanets(TimePoint vizT)
+        static constexpr auto N = 15;
+    } m_particles;
+
+    static constexpr double BoxSize = 10.f;
+
+    void scatterParticles()
     {
-        float x_data[kNumOrbitSegments + 1];
-        float y_data[kNumOrbitSegments + 1];
-
-        if (m_showEarth)
+        for(int i = 0; i < AtomBuffer::N; ++i)
         {
-            ImPlot::SetNextLineStyle(EarthColor);
-            EarthOrbit.plot(x_data, y_data, kNumOrbitSegments);
-            ImPlot::PlotLine("Earth orbit", x_data, y_data, kNumOrbitSegments + 1);
-
-            // Plot Earth's sphere of influence
-            auto earthTrueAnomaly = EarthOrbit.TrueAnomaly(vizT);
-            auto influenceRadius = sphereOfInfluenceRadius(EarthMass, EarthPerihelion, EarthAphelion);
-            auto xPos = EarthOrbit.position(earthTrueAnomaly);
-
-            ImPlot::SetNextLineStyle(EarthColor);
-            plotCircle("Earth influence", xPos.x(), xPos.y(), influenceRadius);
-        }
-        if (m_showMars)
-        {
-            ImPlot::SetNextLineStyle(MarsColor);
-            MarsOrbit.plot(x_data, y_data, kNumOrbitSegments);
-            ImPlot::PlotLine("Mars Orbit", x_data, y_data, kNumOrbitSegments + 1);
-
-            // Plot the Mars's sphere of influence
-            auto marsTrueAnomaly = MarsOrbit.TrueAnomaly(vizT);
-            auto influenceRadius = sphereOfInfluenceRadius(MarsMass, MarsPerihelion, MarsAphelion);
-            auto xPos = MarsOrbit.position(marsTrueAnomaly);
-
-            ImPlot::SetNextLineStyle(MarsColor);
-            plotCircle("Mars influence", xPos.x(), xPos.y(), influenceRadius);
+            m_particles.pos[i] = noise3d();
         }
     }
 
-    static void plotCircle(const char* name, float x0, float y0, float radius)
+    void step()
     {
-        float x[kNumObjectSegments + 1];
-        float y[kNumObjectSegments + 1];
-        for (int i = 0; i < kNumObjectSegments + 1; ++i)
-        {
-            auto theta = i * TwoPi / kNumObjectSegments;
-            x[i] = radius * cos(theta) + x0;
-            y[i] = radius * sin(theta) + y0;
-        }
-        ImPlot::PlotLine(name, x, y, kNumObjectSegments + 1);
+        constexpr auto h = 5e-3; // Dimensionless time step
+        // Update positions
+        if(!freeze)
+            updatePositions(h);
+        // Compute accelerations
+        computeAccelerations();
+        // Update speeds
+        updateSpeeds(h);
     }
-private:
-    static constexpr auto EarthColor = ImVec4(0.02624122189f, 0.6866853124353135f, 1.f, 1.f);
-    static constexpr auto MarsColor = ImVec4(1.f, 86/255.f, 25/255.f, 1.f);
-    static constexpr auto SunColor = ImVec4(1.0f, 0.84687323f, 0.0f, 1.f);
-    static constexpr int kNumOrbitSegments = 1000;
-    static constexpr int kNumObjectSegments = 1000;
 
-    bool m_showMars;
-    bool m_showEarth;
-    CircularOrbit m_sun; // Use a circular orbit to plot the sun as a circle
+    void drawParticles(AtomBuffer& particles)
+    {
+        ImPlot::BeginPlot("Simulation", ImVec2(-1, -1), ImPlotFlags_Equal);
+        ImPlot::PlotScatter("Atoms", &particles.pos[0].x(), &particles.pos[0].y(), AtomBuffer::N, 0, sizeof(Vec3d));
+        ImPlot::EndPlot();
+    }
 
-    float m_transferStartArgument = 0;
-    float m_transferEccentricity = 0;
-    float m_currentTime = 22;
+    void updatePositions(double h)
+    {
+        for(int i = 0; i < AtomBuffer::N; ++i)
+        {
+            auto& pos = m_particles.pos[i];
+            pos += (m_particles.vel[i] + 0.5 * m_particles.acc[i] * h) * h;
+            constexpr double halfBoxSize = BoxSize / 2;
+            // Keep it in the box
+            Vec3d normPos = (pos + halfBoxSize) / BoxSize;
+            Vec3d delta = Vec3d(std::floor(normPos.x()), std::floor(normPos.y()), std::floor(normPos.z()));
+            pos = (normPos - delta) * BoxSize - halfBoxSize;
+        }
+    }
+
+    void computeAccelerations()
+    {
+        // Clear previous accelerations
+        for(int i = 0; i < AtomBuffer::N; ++i)
+        {
+            m_particles.acc[i] = Vec3d{0,0,0};
+        }
+
+        // Iterate over every particle pair
+        // TODO:
+        // Add periodic boundary conditions
+        // Add cut off radius
+        for(int i = 0; i < AtomBuffer::N; ++i)
+        {
+            for(int j = 0; j < i; ++j)
+            {
+                // Compute the force exerted by j into i
+                //for(int k = 0; k < 27; ++k)
+                //{ }
+                auto xij = m_particles.pos[j] - m_particles.pos[i];
+                auto inv_rij2 = 1/dot(xij, xij);
+                auto inv_rij6 = inv_rij2 * inv_rij2 * inv_rij2;
+                auto inv_rij12 = inv_rij6 * inv_rij6;
+                auto f = 4*(12*inv_rij12 - 6*inv_rij6)*inv_rij2*xij;
+                // Using adimensional units, f=a for the particles because m=1;
+                m_particles.acc[i] -= f;
+                m_particles.acc[j] += f;
+            }
+        }
+    }
+
+    void updateSpeeds(double h)
+    {
+        for(int i = 0; i < AtomBuffer::N; ++i)
+        {
+            m_particles.vel[i] += h*m_particles.acc[i];
+        }
+    }
+
+    static int squirrelNoise(int position, int seed = 0)
+    {
+        constexpr unsigned int BIT_NOISE1 = 0xB5297A4D;
+        constexpr unsigned int BIT_NOISE2 = 0x68E31DA4;
+        constexpr unsigned int BIT_NOISE3 = 0x1B56C4E9;
+
+        int mangled = position;
+        mangled *= BIT_NOISE1;
+        mangled += seed;
+        mangled ^= (mangled >> 8);
+        mangled *= BIT_NOISE2;
+        mangled ^= (mangled << 8);
+        mangled *= BIT_NOISE3;
+        mangled ^= (mangled >> 8);
+        return mangled;
+    }
+
+    struct squirrelRng
+    {
+        int rand()
+        {
+            return squirrelNoise(state++);
+        }
+
+        int state = 0;
+    } m_rng;
+
+    Vec3d noise3d()
+    {
+        Vec3d result;
+        auto k = 0xffffff; // 2e24
+        auto r = m_rng.rand();
+        result.x() = double(r%k)/k*BoxSize-(BoxSize/2);
+        result.y() = double(m_rng.rand()%k)/k*BoxSize-(BoxSize/2);
+        result.z() = double(m_rng.rand()%k)/k*BoxSize-(BoxSize/2);
+        return result;
+    }
 };
 
 // Main code
 int main(int, char**)
 {
-    OrbitViewer app;
+    ArgonSimulation app;
     if (!app.init())
         return -1;
 

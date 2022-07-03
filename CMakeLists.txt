@@ -1,8 +1,8 @@
 ################################################################################
-# DX12 test renderer
+# Molecular dynamics playground
 ################################################################################
 cmake_minimum_required (VERSION 3.20)
-project(atlas)
+project(md)
 
 # Global options
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -86,8 +86,8 @@ endforeach()
 # Main target
 file(GLOB_RECURSE VIEWER_SRC "src/*.cpp" "src/*.h")
 GroupSources(src)
-add_executable(atlas ${VIEWER_SRC} ${HLSL_SOURCES})
-target_include_directories(atlas PUBLIC
+add_executable(md ${VIEWER_SRC} ${HLSL_SOURCES})
+target_include_directories(md PUBLIC
     include
     include/dx12headers
     include/json/include
@@ -95,4 +95,4 @@ target_include_directories(atlas PUBLIC
     src/imgui
     src/implot
     src)
-target_link_libraries(atlas ${D3D12_LIBRARIES})
+target_link_libraries(md ${D3D12_LIBRARIES})
